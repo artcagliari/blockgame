@@ -129,6 +129,8 @@ Ferramentas de diagnóstico:
 6. Use **TESTAR NA LIVE** em cada gatilho: dispara o som sem alterar o placar.
 7. **Música de fundo**: envie faixas com a categoria **Música de fundo** (até 20 MB e 15 min cada), monte a playlist e clique **LIGAR MÚSICA**. Ajuste o volume da música e o volume "durante bordões": a música abaixa sozinha quando toca um bordão ou comemoração. **PRÓXIMA FAIXA** pula a música. Marque "Só durante a rodada" se ela não deve tocar enquanto o jogo aguarda a LIVE. **PARAR ÁUDIO** interrompe bordões e efeitos, mas não a música, que tem seu próprio liga/desliga.
 
+> **Crédito**: preencha o campo *Crédito* da faixa (ex.: `Mischief Maker Kevin MacLeod (incompetech.com) · Licensed under Creative Commons: By Attribution 4.0 · https://creativecommons.org/licenses/by/4.0/`). Ele aparece numa linha pequena no rodapé do overlay enquanto a faixa toca. O FAQ do incompetech também recomenda colocar o crédito na seção de música do perfil.
+
 > Use apenas músicas que você tenha direito de usar na transmissão: o TikTok pode silenciar ou derrubar LIVEs com música protegida.
 
 ### Checklist de áudio na LIVE de teste

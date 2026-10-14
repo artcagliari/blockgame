@@ -76,7 +76,7 @@ describe('aplicação completa sobre PostgreSQL real', () => {
   it('áudio (bytes no PostgreSQL), metadados e vínculos sobrevivem ao reinício', async () => {
     const { makeWav } = await import('./audio/fixtures.js');
     const first = await boot();
-    const upload = await fetch(`${first.base}/api/admin/audio?name=Bordao&category=bordao&team=lula`, {
+    const upload = await fetch(`${first.base}/api/admin/audio?name=Bordao&category=bordao&team=lula&credit=${encodeURIComponent('Autor (site) CC BY 4.0')}`, {
       method: 'POST', headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'audio/wav' }, body: makeWav(600),
     });
     expect(upload.status).toBe(201);
@@ -86,7 +86,7 @@ describe('aplicação completa sobre PostgreSQL real', () => {
     const second = await boot();
     const data = await (await admin(second.base, '/audio')).json();
     expect(data.storage).toBe('database');
-    expect(data.clips[0]).toMatchObject({ id: clip.id, durationMs: 600, team: 'lula' });
+    expect(data.clips[0]).toMatchObject({ id: clip.id, durationMs: 600, team: 'lula', credit: 'Autor (site) CC BY 4.0' });
     expect(data.config.bindings['gift:lula:impulso'].clipIds).toEqual([clip.id]);
     const file = await fetch(`${second.base}/audio/${clip.id}`);
     expect(file.status).toBe(200);

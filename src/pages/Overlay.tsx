@@ -22,6 +22,8 @@ export function Overlay() {
   const [gains, setGains] = useState<FloatingGain[]>([]);
   const [audioReady, setAudioReady] = useState(false);
   const { manager: audioManager, music, status: audioStatus, musicStatus, builtinEffects, unlock: unlockLibrary } = useOverlayAudio('overlay');
+  // Crédito exigido pela licença da faixa tocando agora (ex.: Creative Commons BY).
+  const musicCredit = musicStatus?.state === 'playing' ? musicStatus.credit : null;
   const audioDebug = useMemo(() => new URLSearchParams(window.location.search).has('audioDebug'), []);
   const [clockNow, setClockNow] = useState(Date.now());
 
@@ -164,7 +166,10 @@ export function Overlay() {
 
         {audioDebug && <AudioDiagnostics status={audioStatus} music={musicStatus} onUnlock={() => void unlockAudio()} compact />}
 
-        <footer className="disclaimer">JOGO INTERATIVO <span>•</span> NÃO É PESQUISA OU VOTAÇÃO ELEITORAL</footer>
+        <footer className={`disclaimer ${musicCredit ? 'has-credit' : ''}`}>
+          JOGO INTERATIVO <span>•</span> NÃO É PESQUISA OU VOTAÇÃO ELEITORAL
+          {musicCredit && <small className="music-credit">♪ {musicCredit}</small>}
+        </footer>
       </div>
     </main>
   );

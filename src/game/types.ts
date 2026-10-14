@@ -141,6 +141,8 @@ export interface AudioClipInfo {
   /** 0..1 */
   volume: number;
   active: boolean;
+  /** Crédito exigido pela licença (ex.: músicas Creative Commons). Exibido no overlay enquanto toca. */
+  credit: string | null;
   sha256: string;
   createdAt: number;
   updatedAt: number;
@@ -180,7 +182,7 @@ export interface AudioManifest {
   builtinEffects: boolean;
   maxConcurrent: number;
   minVoiceGapMs: number;
-  music: MusicSettings & { tracks: Array<{ id: string; url: string; name: string }> };
+  music: MusicSettings & { tracks: Array<{ id: string; url: string; name: string; credit: string | null }> };
   version: number;
 }
 
@@ -214,7 +216,7 @@ export type AudioReport =
       lastError: string | null;
       masterVolume: number;
       userAgent: string;
-      music?: { state: MusicState; track: string | null; volume: number };
+      music?: { state: MusicState; track: string | null; volume: number; credit?: string | null };
     }
   | { type: 'ack'; clientId: string; playId: string; status: 'played' | 'failed' | 'dropped' | 'blocked'; error?: string };
 

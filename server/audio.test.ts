@@ -308,6 +308,16 @@ describe('música de fundo', () => {
     expect(audio.getConfig().music.clipIds).toEqual([]);
   });
 
+  it('crédito da licença: salvo, limpo de marcação, editável e enviado no manifesto', async () => {
+    const { audio } = await musicAudio();
+    const track = await audio.upload({ data: makeWav(20_000), name: 'Mischief Maker', category: 'musica', team: 'geral', credit: '  Mischief Maker <b>Kevin</b>\nMacLeod (incompetech.com)  ' });
+    expect(track.credit).toBe('Mischief Maker bKevin/b MacLeod (incompetech.com)');
+    await audio.updateConfig({ music: { enabled: true, clipIds: [track.id] } as never });
+    expect(audio.manifest().music.tracks[0].credit).toBe(track.credit);
+    expect((await audio.updateClip(track.id, { credit: '' })).credit).toBeNull();
+    expect((await audio.updateClip(track.id, { credit: 'x'.repeat(500) })).credit).toHaveLength(200);
+  });
+
   it('próxima faixa é enviada aos overlays', async () => {
     const { audio } = await musicAudio();
     const commands: unknown[] = [];

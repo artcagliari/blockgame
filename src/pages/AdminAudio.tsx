@@ -120,6 +120,8 @@ export function AdminAudio({ token, onNotice }: { token: string; onNotice: (mess
         team: String(values.get('team')),
         volume: String(Number(values.get('volume') ?? 100) / 100),
       });
+      const credit = String(values.get('credit') ?? '').trim();
+      if (credit) params.set('credit', credit);
       if (duration) params.set('durationMs', String(duration));
       await sendFile(token, `/audio?${params}`, 'POST', file);
       onNotice(`Áudio “${params.get('name')}” enviado.`);
@@ -271,6 +273,7 @@ export function AdminAudio({ token, onNotice }: { token: string; onNotice: (mess
         <select name="category" defaultValue="bordao">{Object.entries(CATEGORY_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
         <select name="team" defaultValue="geral">{Object.entries(TEAM_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
         <label>Volume <input name="volume" type="number" min={0} max={100} defaultValue={100} />%</label>
+        <input name="credit" className="audio-upload__credit" placeholder="Crédito da licença (aparece no rodapé do overlay enquanto a música toca)" maxLength={200} />
         <button className="button button--start" type="submit" disabled={uploading}>{uploading ? 'ENVIANDO…' : 'ENVIAR'}</button>
         <p className="admin-hint">MP3, WAV ou OGG. Bordões e efeitos: até {formatBytes(data.limits.maxBytes)} e 2 minutos. Música de fundo: até {formatBytes(data.limits.musicMaxBytes)} e 15 minutos. {clips.length}/{data.limits.maxClips} áudios · armazenamento: {data.storage === 'database' ? 'PostgreSQL' : 'volume persistente'}.</p>
       </form>
@@ -301,6 +304,8 @@ export function AdminAudio({ token, onNotice }: { token: string; onNotice: (mess
                 <select value={clip.team} onChange={(event) => void call('Equipe', `/audio/${clip.id}`, { method: 'PUT', body: { team: event.target.value } })}>
                   {Object.entries(TEAM_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
+                <input className="audio-clip__credit" placeholder="Crédito (licença)" defaultValue={clip.credit ?? ''} key={`c-${clip.id}-${clip.credit}`} maxLength={200}
+                  onBlur={(event) => { const value = event.target.value.trim(); if (value !== (clip.credit ?? '')) void call('Crédito', `/audio/${clip.id}`, { method: 'PUT', body: { credit: value || null } }); }} />
                 <span className="audio-clip__meta">{formatMs(clip.durationMs)} · {formatBytes(clip.sizeBytes)} · {clip.mime.replace('audio/', '').toUpperCase()}</span>
                 <label className="audio-clip__volume">Vol. {Math.round(clip.volume * 100)}%
                   <input type="range" min={0} max={100} defaultValue={Math.round(clip.volume * 100)} key={`v-${clip.id}-${clip.volume}`}

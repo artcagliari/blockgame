@@ -327,6 +327,7 @@ export function createApp(deps: AppDeps): App {
     team: z.enum(AUDIO_TEAMS as [string, ...string[]]),
     volume: z.coerce.number().min(0).max(1).optional(),
     durationMs: z.coerce.number().int().min(1).max(3_600_000).optional(),
+    credit: z.string().max(200).optional(),
   });
   const audioError = (res: Response, error: unknown): boolean => {
     if (error instanceof AudioValidationError) { res.status(400).json({ error: 'invalid_audio', message: error.message }); return true; }
@@ -351,7 +352,7 @@ export function createApp(deps: AppDeps): App {
     try {
       const clip = await audio.upload({
         data: req.body, name: query.data.name, category: query.data.category as never, team: query.data.team as never,
-        volume: query.data.volume, clientDurationMs: query.data.durationMs,
+        volume: query.data.volume, clientDurationMs: query.data.durationMs, credit: query.data.credit,
       });
       res.status(201).json({ clip });
     } catch (error) {
@@ -428,6 +429,7 @@ export function createApp(deps: AppDeps): App {
       team: z.enum(AUDIO_TEAMS as [string, ...string[]]),
       volume: z.number().min(0).max(1),
       active: z.boolean(),
+      credit: z.string().max(200).nullable(),
     }).partial().strict().safeParse(req.body);
     if (!patch.success) { res.status(400).json({ error: 'invalid_body', issues: patch.error.issues }); return; }
     try {
@@ -525,6 +527,7 @@ export function createApp(deps: AppDeps): App {
         state: z.enum(['off', 'playing', 'paused', 'waiting', 'blocked', 'error']),
         track: z.string().max(80).nullable(),
         volume: z.number().min(0).max(1),
+        credit: z.string().max(200).nullable().optional(),
       }).strict().optional(),
     }).strict(),
     z.object({

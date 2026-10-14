@@ -89,6 +89,7 @@ export interface UploadInput {
   category: AudioCategory;
   team: AudioTeam;
   volume?: number;
+  credit?: string | null;
   /** Duração medida pelo navegador (usada só quando o servidor não consegue calcular). */
   clientDurationMs?: number | null;
 }
@@ -150,7 +151,7 @@ export class AudioService extends EventEmitter {
   }
 
   async init(): Promise<void> {
-    for (const clip of await this.store.listAudioClips()) this.clips.set(clip.id, clip);
+    for (const clip of await this.store.listAudioClips()) this.clips.set(clip.id, { ...clip, credit: clip.credit ?? null });
     const saved = await this.store.getSetting<AudioConfig>(AUDIO_CONFIG_KEY);
     this.config = this.normalize(saved ?? defaultAudioConfig());
     this.manifestVersion = this.clock();
@@ -180,6 +181,7 @@ export class AudioService extends EventEmitter {
       durationMs: meta.durationMs,
       volume: clampVolume(input.volume ?? 1),
       active: true,
+      credit: cleanCredit(input.credit),
       sha256: meta.sha256,
       createdAt: now,
       updatedAt: now,
@@ -208,7 +210,7 @@ export class AudioService extends EventEmitter {
     return { ...next };
   }
 
-  async updateClip(id: string, patch: Partial<Pick<AudioClipInfo, 'name' | 'category' | 'team' | 'volume' | 'active'>>): Promise<AudioClipInfo> {
+  async updateClip(id: string, patch: Partial<Pick<AudioClipInfo, 'name' | 'category' | 'team' | 'volume' | 'active' | 'credit'>>): Promise<AudioClipInfo> {
     const current = this.requireClip(id);
     if (patch.category && patch.category !== current.category && current.category === 'musica') {
       const limit = this.options.maxDurationMs ?? 120_000;
@@ -223,6 +225,7 @@ export class AudioService extends EventEmitter {
       team: patch.team ?? current.team,
       volume: patch.volume !== undefined ? clampVolume(patch.volume) : current.volume,
       active: patch.active ?? current.active,
+      credit: patch.credit !== undefined ? cleanCredit(patch.credit) : current.credit ?? null,
       updatedAt: this.clock(),
     };
     await this.store.saveAudioClip(next);
@@ -308,7 +311,7 @@ export class AudioService extends EventEmitter {
         tracks: this.config.music.clipIds
           .map((id) => this.clips.get(id))
           .filter((clip): clip is AudioClipInfo => Boolean(clip?.active))
-          .map((clip) => ({ id: clip.id, url: this.clipUrl(clip, baseUrl), name: clip.name })),
+          .map((clip) => ({ id: clip.id, url: this.clipUrl(clip, baseUrl), name: clip.name, credit: clip.credit ?? null })),
       },
       version: this.manifestVersion,
     };
@@ -589,6 +592,12 @@ function cleanName(name: string): string {
   const value = String(name ?? '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 60);
   if (!value) throw new AudioValidationError('Informe um nome para o áudio.');
   return value;
+}
+
+/** Texto livre e curto; sem marcação. */
+function cleanCredit(value: string | null | undefined): string | null {
+  const text = String(value ?? '').replace(/[\u0000-\u001f]/g, ' ').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  return text || null;
 }
 
 function clampVolume(value: number): number {

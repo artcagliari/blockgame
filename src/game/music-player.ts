@@ -15,6 +15,8 @@ export interface MediaLike {
 export interface MusicStatus {
   state: MusicState;
   track: string | null;
+  /** Crédito da faixa atual (licença), quando houver. */
+  credit: string | null;
   /** Volume efetivo aplicado agora (0..1). */
   volume: number;
 }
@@ -89,8 +91,14 @@ export class MusicPlayer {
   }
 
   status(): MusicStatus {
-    const track = this.settings?.tracks[this.trackIndex]?.name ?? null;
-    return { state: this.state, track: this.state === 'off' ? null : track, volume: Math.round(this.current * 100) / 100 };
+    const current = this.settings?.tracks[this.trackIndex];
+    const visible = this.state !== 'off';
+    return {
+      state: this.state,
+      track: visible ? current?.name ?? null : null,
+      credit: visible ? current?.credit ?? null : null,
+      volume: Math.round(this.current * 100) / 100,
+    };
   }
 
   get error(): string | null {

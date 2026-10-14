@@ -137,6 +137,10 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       );
     `,
   },
+  {
+    version: 3,
+    sql: `ALTER TABLE audio_clips ADD COLUMN credit text;`,
+  },
 ];
 
 export interface PgStoreOptions {
@@ -510,13 +514,13 @@ export class PgStore implements Store {
 
   async saveAudioClip(clip: AudioClipInfo): Promise<void> {
     await this.pool.query(
-      `INSERT INTO audio_clips (id, name, category, team, mime, size_bytes, duration_ms, volume, active, sha256, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      `INSERT INTO audio_clips (id, name, category, team, mime, size_bytes, duration_ms, volume, active, sha256, created_at, updated_at, credit)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name, category = EXCLUDED.category, team = EXCLUDED.team, mime = EXCLUDED.mime,
          size_bytes = EXCLUDED.size_bytes, duration_ms = EXCLUDED.duration_ms, volume = EXCLUDED.volume,
-         active = EXCLUDED.active, sha256 = EXCLUDED.sha256, updated_at = EXCLUDED.updated_at`,
-      [clip.id, clip.name, clip.category, clip.team, clip.mime, clip.sizeBytes, clip.durationMs, clip.volume, clip.active, clip.sha256, clip.createdAt, clip.updatedAt],
+         active = EXCLUDED.active, sha256 = EXCLUDED.sha256, updated_at = EXCLUDED.updated_at, credit = EXCLUDED.credit`,
+      [clip.id, clip.name, clip.category, clip.team, clip.mime, clip.sizeBytes, clip.durationMs, clip.volume, clip.active, clip.sha256, clip.createdAt, clip.updatedAt, clip.credit ?? null],
     );
   }
 
@@ -632,6 +636,7 @@ function toClip(row: Record<string, unknown>): AudioClipInfo {
     durationMs: row.duration_ms === null ? null : Number(row.duration_ms),
     volume: Number(row.volume),
     active: Boolean(row.active),
+    credit: row.credit === null || row.credit === undefined ? null : String(row.credit),
     sha256: String(row.sha256),
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),

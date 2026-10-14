@@ -23,7 +23,7 @@ class FakeMedia implements MediaLike {
 
 const music = (over: Partial<AudioManifest['music']> = {}): AudioManifest['music'] => ({
   enabled: true, clipIds: ['a', 'b', 'c'], mode: 'sequential', volume: 0.5, duck: 0.2, onlyDuringMatch: false,
-  tracks: ['a', 'b', 'c'].map((id) => ({ id, url: `/audio/${id}`, name: `Faixa ${id}` })), ...over,
+  tracks: ['a', 'b', 'c'].map((id) => ({ id, url: `/audio/${id}`, name: `Faixa ${id}`, credit: id === 'a' ? 'Faixa a Autor (site) CC BY 4.0' : null })), ...over,
 });
 const flush = async () => { for (let i = 0; i < 5; i += 1) await Promise.resolve(); };
 
@@ -50,7 +50,7 @@ describe('MusicPlayer (música de fundo)', () => {
   });
 
   it('uma única faixa fica em loop nativo', async () => {
-    player.configure(music({ tracks: [{ id: 'a', url: '/audio/a', name: 'A' }], clipIds: ['a'] }));
+    player.configure(music({ tracks: [{ id: 'a', url: '/audio/a', name: 'A', credit: null }], clipIds: ['a'] }));
     await flush();
     expect(media.loop).toBe(true);
   });
@@ -125,6 +125,17 @@ describe('MusicPlayer (música de fundo)', () => {
     vi.advanceTimersByTime(1_100);
     await flush();
     expect(media.played.at(-1)).toBe('/audio/b');
+  });
+
+  it('informa o crédito da faixa tocando; desligada não mostra crédito', async () => {
+    player.configure(music());
+    await flush();
+    expect(player.status()).toMatchObject({ state: 'playing', credit: 'Faixa a Autor (site) CC BY 4.0' });
+    player.next();
+    await flush();
+    expect(player.status().credit).toBeNull();
+    player.configure(music({ enabled: false }));
+    expect(player.status()).toMatchObject({ state: 'off', credit: null });
   });
 
   it('próxima faixa pelo painel', async () => {

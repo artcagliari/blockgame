@@ -28,3 +28,10 @@
 - Os objetos foram recriados como ilustrações 3D originais; as capturas da interface do TikTok não são usadas diretamente no overlay.
 
 Antes de uma exploração pública ou comercial, confira se as condições de atribuição e reutilização das páginas de origem continuam adequadas ao uso pretendido.
+
+## Música de fundo
+
+- "Mischief Maker" — Kevin MacLeod (incompetech.com)
+  Licensed under Creative Commons: By Attribution 4.0 — https://creativecommons.org/licenses/by/4.0/
+  O arquivo não fica no repositório: é enviado pelo painel `/admin` (categoria Música de fundo) com este crédito,
+  que o overlay exibe no rodapé enquanto a faixa toca.
