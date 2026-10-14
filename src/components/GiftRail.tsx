@@ -1,8 +1,16 @@
 import { GIFTS } from '../game/gifts';
-import type { Team } from '../game/types';
+import { TEAM_LABELS, type Team } from '../game/types';
 import { GiftIcon } from './GiftIcon';
 
-export function GiftRail({ team, activeId, specialActive, likesPerBlock = 1 }: { team: Team; activeId?: string; specialActive?: boolean; likesPerBlock?: number }) {
+export function GiftRail({ team, activeId, specialActive, likesPerBlock = 1, commentsPerBlock = 0, commentActive = false }: {
+  team: Team;
+  activeId?: string;
+  specialActive?: boolean;
+  likesPerBlock?: number;
+  /** 0 = comentários desligados. */
+  commentsPerBlock?: number;
+  commentActive?: boolean;
+}) {
   return (
     <aside className={`gift-rail gift-rail--${team}`} aria-label={`Presentes da equipe ${team}`}>
       <div className={`special-trigger ${specialActive ? 'is-active' : ''}`}>
@@ -16,6 +24,12 @@ export function GiftRail({ team, activeId, specialActive, likesPerBlock = 1 }: {
           </>
         )}
       </div>
+      {commentsPerBlock > 0 && (
+        <div className={`special-trigger special-trigger--comment ${commentActive ? 'is-active' : ''}`}>
+          <span>💬</span>
+          <div className="special-trigger__copy"><b>COMENTE {TEAM_LABELS[team]}</b><small>{commentsPerBlock} = 1 BLOCO</small></div>
+        </div>
+      )}
       <div className="gift-rail__title">PRESENTES</div>
       {GIFTS.map((gift) => (
         <div className={`gift-card ${activeId === gift.id ? 'is-active' : ''}`} key={gift.id} title={`${gift.labels[team]}: +${gift.amount} blocos`}>

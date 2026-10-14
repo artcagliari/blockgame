@@ -80,6 +80,7 @@ export class GameEngine extends EventEmitter {
       roundId: 1,
       seq: 1,
       pendingLikes: 0,
+      pendingComments: { lula: 0, bolsonaro: 0 },
       phase: 'playing',
       teams: { lula: { score: 0, wins: 0 }, bolsonaro: { score: 0, wins: 0 } },
       config: merged,
@@ -130,6 +131,7 @@ export class GameEngine extends EventEmitter {
     state.config = normalizeConfig({ ...DEFAULT_CONFIG, ...state.config });
     state.roundId = state.roundId ?? 1;
     state.pendingLikes = Number.isFinite(state.pendingLikes) ? state.pendingLikes : 0;
+    state.pendingComments = { lula: state.pendingComments?.lula ?? 0, bolsonaro: state.pendingComments?.bolsonaro ?? 0 };
     state.seq = (state.seq ?? 0) + 1;
     if (state.startedAt === null) {
       // Rodada ainda aguardando o primeiro evento: nada a ajustar.
@@ -230,23 +232,36 @@ export class GameEngine extends EventEmitter {
    * O resto fica guardado para a próxima curtida (zera no início de cada rodada).
    */
   planLikes(team: Team, likes: number, meta: ScoreMeta): ScorePlan | { rejected: RejectReason } {
+    return this.planAccumulated(team, likes, meta, this.state.config.likesPerBlock,
+      (state) => state.pendingLikes, (state, value) => { state.pendingLikes = value; });
+  }
+
+  /** Comentários "13"/"22": mesmo mecanismo das curtidas, com contador por equipe. */
+  planComments(team: Team, comments: number, meta: ScoreMeta): ScorePlan | { rejected: RejectReason } {
+    return this.planAccumulated(team, comments, meta, this.state.config.commentsPerBlock,
+      (state) => state.pendingComments[team], (state, value) => { state.pendingComments[team] = value; });
+  }
+
+  private planAccumulated(
+    team: Team, units: number, meta: ScoreMeta, per: number,
+    read: (state: GameState) => number, write: (state: GameState, value: number) => void,
+  ): ScorePlan | { rejected: RejectReason } {
     if (this.state.phase === 'paused') return { rejected: 'paused' };
     if (this.state.phase !== 'playing') return { rejected: 'result_phase' };
-    if (!Number.isFinite(likes) || likes < 1) return { rejected: 'invalid_amount' };
-    const per = this.state.config.likesPerBlock;
-    const total = this.state.pendingLikes + Math.round(likes);
+    if (!Number.isFinite(units) || units < 1) return { rejected: 'invalid_amount' };
+    const total = read(this.state) + Math.round(units);
     const blocks = Math.floor(total / per);
     const rest = total % per;
     if (blocks === 0) {
       const next = structuredClone(this.state);
-      next.pendingLikes = rest;
+      write(next, rest);
       next.seq += 1;
       next.serverNow = this.now();
       return { baseSeq: this.state.seq, next, event: null, roundEnded: false };
     }
-    const plan = this.plan(team, blocks, { ...meta, count: Math.round(likes) });
+    const plan = this.plan(team, blocks, { ...meta, count: Math.round(units) });
     if ('rejected' in plan) return plan;
-    plan.next.pendingLikes = rest;
+    write(plan.next, rest);
     return plan;
   }
 
@@ -336,6 +351,7 @@ export class GameEngine extends EventEmitter {
     next.teams.lula.score = 0;
     next.teams.bolsonaro.score = 0;
     next.pendingLikes = 0;
+    next.pendingComments = { lula: 0, bolsonaro: 0 };
     next.startedAt = null;
     next.pausedAt = null;
     next.pauseAccumulatedMs = 0;
@@ -374,6 +390,8 @@ export function normalizeConfig(input: Partial<GameConfig>): GameConfig {
     },
     autoRestart: Boolean(base.autoRestart),
     likesPerBlock: clamp(Math.round(base.likesPerBlock ?? 120), 1, 10_000),
+    commentVotes: base.commentVotes ?? true,
+    commentsPerBlock: clamp(Math.round(base.commentsPerBlock ?? 20), 1, 10_000),
   };
 }
 

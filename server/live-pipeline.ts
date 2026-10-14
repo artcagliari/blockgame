@@ -4,7 +4,17 @@ import type { GameService, ScoreOutcome } from './game-service.js';
 import { GIFT_ID_PATTERN, type GiftRegistry } from './gift-registry.js';
 import type { Logger } from './logger.js';
 import type { Store } from './store/types.js';
-import type { FollowLiveEvent, GiftLiveEvent, LikeLiveEvent, LiveEvent } from './tiktok/events.js';
+import type { DiagnosticLiveEvent, FollowLiveEvent, GiftLiveEvent, LikeLiveEvent, LiveEvent } from './tiktok/events.js';
+import type { Team } from '../src/game/types.js';
+
+/** Comentário que é só o número da equipe: "13", "22", "#13", "22!!" etc. */
+export function commentVote(text: string | undefined): Team | null {
+  const match = /^\s*#?\s*(13|22)\s*[!.?]*\s*$/.exec(text ?? '');
+  return match ? (match[1] === '13' ? 'lula' : 'bolsonaro') : null;
+}
+
+/** Uma pessoa só conta 1 comentário a cada tantos ms (anti-spam). */
+export const COMMENT_COOLDOWN_MS = 3_000;
 
 const MAX_UNITS_PER_EVENT = 9_999;
 
@@ -38,6 +48,7 @@ export class LivePipeline extends EventEmitter {
    * decidir o incremento e gravar precisa ser atômico em relação ao evento seguinte.
    */
   private chain: Promise<unknown> = Promise.resolve();
+  private lastCommentAt = new Map<string, number>();
 
   constructor(
     private readonly game: GameService,
@@ -66,6 +77,7 @@ export class LivePipeline extends EventEmitter {
         case 'gift': outcome = await this.gift(event, origin, sessionKey); break;
         case 'like': outcome = await this.like(event, origin, sessionKey); break;
         case 'follow': outcome = await this.follow(event, origin, sessionKey); break;
+        case 'comment': outcome = await this.comment(event, origin, sessionKey); break;
         default: outcome = { status: 'ignored', reason: 'diagnostic_only' };
       }
     } catch (error) {
@@ -73,7 +85,8 @@ export class LivePipeline extends EventEmitter {
       void this.store.logError('pipeline', String((error as Error)?.message ?? error)).catch(() => {});
       outcome = { status: 'error', reason: 'exception' };
     }
-    if (event.type === 'gift' || event.type === 'like' || event.type === 'follow') {
+    const countsAsVote = event.type === 'comment' && outcome.status !== 'ignored';
+    if (event.type === 'gift' || event.type === 'like' || event.type === 'follow' || countsAsVote) {
       this.emit('processed', {
         at: Date.now(),
         origin,
@@ -110,6 +123,33 @@ export class LivePipeline extends EventEmitter {
       dedupeKey: key, origin, kind: 'like', effect: 'like', team: 'lula', amount, likes: amount, viewerName: event.userName || undefined,
       sessionKey, userHash,
     });
+  }
+
+  // ---- COMENTÁRIO "13"/"22": acumula até `commentsPerBlock` e vira 1 bloco ----
+  private async comment(event: DiagnosticLiveEvent, origin: 'real' | 'test', sessionKey: string): Promise<ScoreOutcome> {
+    const team = commentVote(event.text);
+    // Comentários comuns não são gravados (são só diagnóstico).
+    if (!team) return { status: 'ignored', reason: 'not_a_vote' };
+    if (!this.game.getState().config.commentVotes) return { status: 'ignored', reason: 'comment_votes_disabled' };
+    const prefix = origin === 'test' ? 'test:' : '';
+    const userHash = event.userId ? this.hashUser(event.userId) : undefined;
+    const now = event.at || Date.now();
+    const userKey = `${prefix}${sessionKey}:${userHash ?? 'anon'}`;
+    if (now - (this.lastCommentAt.get(userKey) ?? 0) < COMMENT_COOLDOWN_MS) {
+      return { status: 'ignored', reason: 'comment_rate_limited' };
+    }
+    const key = event.msgId
+      ? `${prefix}comment:${sessionKey}:${event.msgId}`
+      : `${prefix}comment:${sessionKey}:${userHash ?? 'anon'}:${now}`;
+    const outcome = await this.game.score({
+      dedupeKey: key, origin, kind: 'comment', effect: 'comment', team, amount: 1, comments: 1,
+      viewerName: event.userName || undefined, sessionKey, userHash,
+    });
+    if (outcome.status === 'applied' || outcome.status === 'accumulated') {
+      this.lastCommentAt.set(userKey, now);
+      if (this.lastCommentAt.size > 20_000) this.lastCommentAt.clear();
+    }
+    return outcome;
   }
 
   // ---- FOLLOW: +1 bloco ao Bolsonaro, uma vez por usuário e sessão LIVE ----

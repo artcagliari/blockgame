@@ -138,13 +138,13 @@ button { color: inherit; }
 .versus-badge b { color: #ffd24f; font-size: 3cqw; }
 .versus-badge span:first-child { color: #ff5368; }.versus-badge span:last-child { color: #45ef8a; }
 
-.gift-rail { position: absolute; z-index: 8; top: 30.2%; width: 18.2cqw; display: grid; gap: .65cqw; pointer-events: none; }
+.gift-rail { position: absolute; z-index: 8; top: 28.5%; width: 18.2cqw; display: grid; gap: .5cqw; pointer-events: none; }
 .gift-rail--lula { left: .65cqw; }
 .gift-rail--bolsonaro { right: .65cqw; }
 .gift-rail__title { padding: .35cqw .6cqw; text-align: center; color: rgba(255,255,255,.65); font: 800 1.35cqw/1 Inter, sans-serif; letter-spacing: .14em; text-shadow: 0 .3cqw .7cqw #000; }
 .special-trigger, .gift-card {
   position: relative;
-  min-height: 6.35cqw;
+  min-height: 5.95cqw;
   display: flex;
   align-items: center;
   gap: .65cqw;
@@ -157,7 +157,7 @@ button { color: inherit; }
 }
 .gift-rail--bolsonaro .special-trigger, .gift-rail--bolsonaro .gift-card { border-color: #11985a; }
 .special-trigger::before, .gift-card::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 27%; background: linear-gradient(110deg, rgba(255,255,255,.08), transparent); transform: skewX(-12deg); }
-.special-trigger { min-height: 6.9cqw; border-color: #ff3d56; background: linear-gradient(110deg, rgba(97,10,30,.96), rgba(5,18,34,.94)); }
+.special-trigger { min-height: 6.4cqw; border-color: #ff3d56; background: linear-gradient(110deg, rgba(97,10,30,.96), rgba(5,18,34,.94)); }
 .gift-rail--bolsonaro .special-trigger { border-color: #2de27b; background: linear-gradient(110deg, rgba(4,85,49,.95), rgba(5,18,34,.94)); }
 .special-trigger > span, .gift-card__icon { position: relative; flex: 0 0 4.65cqw; text-align: center; font-size: 4.2cqw; line-height: 1; filter: drop-shadow(0 .3cqw .35cqw rgba(0,0,0,.55)); }
 .gift-icon { display: inline-block; width: 4.65cqw; height: 4.65cqw; flex: 0 0 4.65cqw; background-repeat: no-repeat; background-size: 600% 200%; background-position: var(--gift-position) center; filter: drop-shadow(0 .35cqw .45cqw rgba(0,0,0,.65)); }
@@ -168,6 +168,8 @@ button { color: inherit; }
 .special-trigger b { font: 900 1.85cqw/1 'Barlow Condensed', sans-serif; }
 .special-trigger small { margin-top: .3cqw; color: #ffcf52; font: 800 1.15cqw/1 Inter, sans-serif; }
 .special-trigger__copy { position: relative; display: block; min-width: 0; }
+.special-trigger--comment { min-height: 5.95cqw; }
+.special-trigger--comment > span { font-size: 3.4cqw; }
 .special-trigger__copy b, .special-trigger__copy small { white-space: nowrap; }
 .gift-card__copy { min-width: 0; }
 .gift-card__copy b, .gift-card__copy small { display: block; white-space: nowrap; }

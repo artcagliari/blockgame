@@ -123,11 +123,15 @@ export function Overlay() {
         <GiftRail
           team="lula"
           likesPerBlock={state.config.likesPerBlock}
+          commentsPerBlock={state.config.commentVotes ? state.config.commentsPerBlock : 0}
+          commentActive={latestEffect?.team === 'lula' && latestEffect.effect === 'comment'}
           activeId={latestEffect?.team === 'lula' ? latestEffect.giftId : undefined}
           specialActive={latestEffect?.team === 'lula' && latestEffect.effect === 'like'}
         />
         <GiftRail
           team="bolsonaro"
+          commentsPerBlock={state.config.commentVotes ? state.config.commentsPerBlock : 0}
+          commentActive={latestEffect?.team === 'bolsonaro' && latestEffect.effect === 'comment'}
           activeId={latestEffect?.team === 'bolsonaro' ? latestEffect.giftId : undefined}
           specialActive={latestEffect?.team === 'bolsonaro' && latestEffect.effect === 'follow'}
         />
@@ -135,7 +139,7 @@ export function Overlay() {
         <div className="gain-feed" aria-live="polite">
           {gains.map((gain) => {
             const gift = getGift(gain.giftId);
-            const special = gain.effect === 'like' ? { icon: '❤', label: 'LIKE' } : gain.effect === 'follow' ? { icon: '♟', label: 'SEGUIR' } : null;
+            const special = gain.effect === 'like' ? { icon: '❤', label: 'LIKES' } : gain.effect === 'follow' ? { icon: '♟', label: 'SEGUIR' } : gain.effect === 'comment' ? { icon: '💬', label: `COMENTÁRIOS ${TEAM_LABELS[gain.team]}` } : null;
             return (
               <div className={`gain-chip gain-chip--${gain.team} ${gain.effect ? 'gain-chip--event' : ''}`} key={gain.id}>
                 {gift ? (

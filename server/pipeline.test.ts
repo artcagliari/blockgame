@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { GIFT_SLOTS } from './gift-slots.js';
 import { GIFTS } from '../src/game/gifts.js';
 import { follow, gift, like, makeHarness } from './test-helpers.js';
+import { commentVote } from './live-pipeline.js';
+import type { DiagnosticLiveEvent } from './tiktok/events.js';
 
 /** Associa os 12 slots a giftIds sintéticos 1001..1012 (apenas para teste). */
 async function mapAll(registry: Awaited<ReturnType<typeof makeHarness>>['registry']) {
@@ -355,7 +357,7 @@ describe('curtidas por bloco (padrão do jogo: 120)', () => {
     const { pipeline, engine } = await makeHarness({ likesPerBlock: 120 });
     const events: Array<{ amount: number; count?: number }> = [];
     engine.on('increment', (event) => events.push(event));
-    expect(await pipeline.handle(like({ count: 100 }), 'real', 'room1')).toMatchObject({ status: 'accumulated', pendingLikes: 100 });
+    expect(await pipeline.handle(like({ count: 100 }), 'real', 'room1')).toMatchObject({ status: 'accumulated', pending: 100, perBlock: 120 });
     expect(engine.getState().teams.lula.score).toBe(0);
     await pipeline.handle(like({ count: 50 }), 'real', 'room1');
     expect(engine.getState().teams.lula.score).toBe(1);
@@ -390,5 +392,60 @@ describe('curtidas por bloco (padrão do jogo: 120)', () => {
     await pipeline.handle(like({ count: 25 }), 'real', 'room1');
     expect(engine.getState().teams.lula.score).toBe(2);
     expect(engine.getState().pendingLikes).toBe(5);
+  });
+});
+
+describe('comentários "13" / "22" (padrão: 20 = 1 bloco)', () => {
+  let seq = 0;
+  const comment = (text: string, userId = `u${++seq}`, at = Date.now() + seq * 10_000): DiagnosticLiveEvent =>
+    ({ type: 'comment', msgId: `c${++seq}`, roomId: 'room1', userId, userName: 'Ana', at, text });
+
+  it('reconhece só o número da equipe', () => {
+    expect(commentVote('13')).toBe('lula');
+    expect(commentVote(' #22!! ')).toBe('bolsonaro');
+    for (const text of ['1322', '13 13', 'vai 13', '22 é melhor', '113', '', 'treze']) expect(commentVote(text)).toBeNull();
+  });
+
+  it('20 comentários "13" de pessoas diferentes derrubam 1 bloco para o 13; "22" vai para o 22', async () => {
+    const { pipeline, engine } = await makeHarness();
+    engine.updateConfig({ commentsPerBlock: 20 });
+    for (let index = 0; index < 19; index += 1) await pipeline.handle(comment('13'), 'real', 'room1');
+    expect(engine.getState().teams.lula.score).toBe(0);
+    expect(engine.getState().pendingComments.lula).toBe(19);
+    const last = await pipeline.handle(comment('13'), 'real', 'room1');
+    expect(last).toMatchObject({ status: 'applied', event: { team: 'lula', amount: 1, kind: 'comment', effect: 'comment' } });
+    for (let index = 0; index < 25; index += 1) await pipeline.handle(comment('22'), 'real', 'room1');
+    expect(engine.getState().teams).toMatchObject({ lula: { score: 1 }, bolsonaro: { score: 1 } });
+    expect(engine.getState().pendingComments).toEqual({ lula: 0, bolsonaro: 5 });
+  });
+
+  it('comentário comum é ignorado e não é gravado', async () => {
+    const { pipeline, store } = await makeHarness();
+    expect(await pipeline.handle(comment('bom dia'), 'real', 'room1')).toMatchObject({ status: 'ignored', reason: 'not_a_vote' });
+    expect(await store.stats()).toEqual([]);
+  });
+
+  it('anti-spam: a mesma pessoa só conta 1 comentário a cada 3 s; mensagem repetida não conta', async () => {
+    const { pipeline, engine } = await makeHarness();
+    const t = Date.now();
+    await pipeline.handle(comment('13', 'spammer', t), 'real', 'room1');
+    expect(await pipeline.handle(comment('13', 'spammer', t + 500), 'real', 'room1')).toMatchObject({ status: 'ignored', reason: 'comment_rate_limited' });
+    await pipeline.handle(comment('13', 'spammer', t + 3_500), 'real', 'room1');
+    const repeated = comment('13', 'other', t + 10_000);
+    await pipeline.handle(repeated, 'real', 'room1');
+    await pipeline.handle({ ...repeated }, 'real', 'room1');
+    expect(engine.getState().pendingComments.lula).toBe(3);
+  });
+
+  it('desligado no painel: nenhum comentário conta; nova rodada zera o acumulado', async () => {
+    const { pipeline, engine, game } = await makeHarness();
+    await game.updateConfig({ commentVotes: false });
+    await pipeline.handle(comment('22'), 'real', 'room1');
+    expect(engine.getState().pendingComments.bolsonaro).toBe(0);
+    await game.updateConfig({ commentVotes: true });
+    await pipeline.handle(comment('22'), 'real', 'room1');
+    expect(engine.getState().pendingComments.bolsonaro).toBe(1);
+    await game.resetRound();
+    expect(engine.getState().pendingComments).toEqual({ lula: 0, bolsonaro: 0 });
   });
 });

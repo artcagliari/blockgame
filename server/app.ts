@@ -189,6 +189,8 @@ export function createApp(deps: AppDeps): App {
     autoTeams: z.object({ lula: z.boolean(), bolsonaro: z.boolean() }).partial(),
     autoRestart: z.boolean(),
     likesPerBlock: z.number().int().min(1).max(10_000),
+    commentVotes: z.boolean(),
+    commentsPerBlock: z.number().int().min(1).max(10_000),
   }).partial().strict();
   admin.put('/game/config', needLeader, wrap(async (req, res) => {
     const parsed = configSchema.safeParse(req.body);
@@ -261,6 +263,15 @@ export function createApp(deps: AppDeps): App {
     res.json(await sendTest({ type: 'like', ...base(), count, total: null }));
   }));
   test.post('/follow', wrap(async (_req, res) => { res.json(await sendTest({ type: 'follow', via: 'follow', ...base() })); }));
+  /** Comentários "13"/"22" de pessoas diferentes (cada uma conta 1). */
+  test.post('/comment', wrap(async (req, res) => {
+    const { team, count } = z.object({ team: z.enum(['lula', 'bolsonaro']), count: z.number().int().min(1).max(100).default(1) }).parse(req.body);
+    const text = team === 'lula' ? '13' : '22';
+    const results = [];
+    for (let index = 0; index < count; index += 1) results.push(await sendTest({ type: 'comment', ...base(), text }));
+    const applied = results.filter((item) => item.status === 'applied').reduce((sum, item) => sum + (item.status === 'applied' ? item.event.amount : 0), 0);
+    res.json({ sent: count, blocks: applied, pending: game.getState().pendingComments[team] });
+  }));
   test.post('/gift', wrap(async (req, res) => {
     const { slotId, repeatCount } = z.object({ slotId: slotIdSchema, repeatCount: z.number().int().min(1).max(100).default(1) }).parse(req.body);
     res.json(await sendTest(giftEvent(slotId, { repeatCount })));

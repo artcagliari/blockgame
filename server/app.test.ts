@@ -222,6 +222,15 @@ describe('backend integrado', () => {
     expect(replayed).toHaveLength(0);
   });
 
+  it('comentários "13"/"22" pelo teste do painel: 20 = 1 bloco, cada equipe no seu contador', async () => {
+    const { base, app } = await boot();
+    const lula = await (await post(base, '/test/comment', { team: 'lula', count: 20 })).json();
+    const bolso = await (await post(base, '/test/comment', { team: 'bolsonaro', count: 7 })).json();
+    expect(lula).toMatchObject({ sent: 20, blocks: 1, pending: 0 });
+    expect(bolso).toMatchObject({ sent: 7, blocks: 0, pending: 7 });
+    expect(app.game.getState().teams).toMatchObject({ lula: { score: 1 }, bolsonaro: { score: 0 } });
+  });
+
   it('pede snapshot atualizado via sync', async () => {
     const { base } = await boot();
     const socket = overlay(base);

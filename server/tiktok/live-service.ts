@@ -250,6 +250,7 @@ export class TikTokLiveService extends EventEmitter {
         const event = normalizeDiagnostic('comment', data, room());
         this.comments.push({ at: event.at, user: event.userName.slice(0, 24), text: event.text ?? '' });
         if (this.comments.length > 20) this.comments.shift();
+        forward(event); // "13"/"22" contam para a equipe; os demais são descartados no pipeline
       } catch { /* diagnóstico apenas */ }
     });
     connection.on('streamEnd', () => {

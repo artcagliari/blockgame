@@ -13,6 +13,8 @@ export interface ScoreInput {
   amount: number;
   /** Curtidas brutas: convertidas em blocos segundo `likesPerBlock`. */
   likes?: number;
+  /** Comentários "13"/"22": convertidos em blocos segundo `commentsPerBlock`. */
+  comments?: number;
   effect?: IncrementEvent['effect'];
   /** Identificador visual do presente (catálogo do jogo). */
   giftId?: string;
@@ -30,7 +32,7 @@ export interface ScoreInput {
 
 export type ScoreOutcome =
   | { status: 'applied'; event: IncrementEvent }
-  | { status: 'accumulated'; pendingLikes: number; likesPerBlock: number }
+  | { status: 'accumulated'; pending: number; perBlock: number }
   | { status: 'duplicate'; reason: string }
   | { status: 'ignored'; reason: string }
   | { status: 'error'; reason: string };
@@ -164,7 +166,9 @@ export class GameService extends EventEmitter {
     };
     const plan = input.likes !== undefined
       ? this.engine.planLikes(input.team, input.likes, meta)
-      : this.engine.plan(input.team, input.amount, meta);
+      : input.comments !== undefined
+        ? this.engine.planComments(input.team, input.comments, meta)
+        : this.engine.plan(input.team, input.amount, meta);
     if ('rejected' in plan) {
       await this.ignore({
         dedupeKey: input.dedupeKey, origin: input.origin, kind: input.kind, reason: plan.rejected,
@@ -209,7 +213,11 @@ export class GameService extends EventEmitter {
     this.engine.commit(plan);
     this.remember(input.dedupeKey);
     this.lastSavedSeq = plan.next.seq;
-    if (!plan.event) return { status: 'accumulated', pendingLikes: plan.next.pendingLikes, likesPerBlock: plan.next.config.likesPerBlock };
+    if (!plan.event) {
+      return input.comments !== undefined
+        ? { status: 'accumulated', pending: plan.next.pendingComments[input.team], perBlock: plan.next.config.commentsPerBlock }
+        : { status: 'accumulated', pending: plan.next.pendingLikes, perBlock: plan.next.config.likesPerBlock };
+    }
     return { status: 'applied', event: plan.event };
   }
 

@@ -134,13 +134,16 @@ describe('TikTokLiveService', () => {
     connection.emit('social', { common: { msgId: 'f2', displayText: { key: 'pm_main_follow_message_viewer_2' } }, user: { userId: '2' } });
     connection.emit('share', { user: { userId: '3' } });
     connection.emit('chat', { comment: 'oi', user: { userId: '4', nickname: 'Cris' } });
+    for (let index = 0; index < 20; index += 1) connection.emit('chat', { common: { msgId: `v${index}` }, comment: '22', user: { userId: `voter${index}` } });
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(0);
     const { lula, bolsonaro } = engine.getState().teams;
     expect(lula.score).toBe(2 * 5 + 3);
-    expect(bolsonaro.score).toBe(1);
-    expect(service.getStatus().counters).toMatchObject({ gifts: 1, likes: 1, follows: 2, shares: 1, comments: 1 });
-    expect(service.getRecentComments()[0]).toMatchObject({ text: 'oi' });
+    expect(bolsonaro.score).toBe(2); // 1 seguidor + 20 comentários "22" (padrão 20 = 1 bloco)
+    expect(service.getStatus().counters).toMatchObject({ gifts: 1, likes: 1, follows: 2, shares: 1, comments: 21 });
+    // o diagnóstico guarda os 20 comentários mais recentes
+    expect(service.getRecentComments()).toHaveLength(20);
+    expect(service.getRecentComments().at(-1)).toMatchObject({ text: '22' });
   });
 
   it('atualiza o registro de presentes com fetchAvailableGifts', async () => {

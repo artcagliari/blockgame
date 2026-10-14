@@ -15,6 +15,10 @@ export interface GameConfig {
   autoRestart: boolean;
   /** Quantas curtidas valem 1 bloco para o Lula. */
   likesPerBlock: number;
+  /** Comentários "13"/"22" no chat contam para a equipe correspondente. */
+  commentVotes: boolean;
+  /** Quantos comentários "13" (ou "22") valem 1 bloco. */
+  commentsPerBlock: number;
 }
 
 export interface TeamState {
@@ -31,6 +35,8 @@ export interface GameState {
   seq: number;
   /** Curtidas recebidas nesta rodada que ainda não completaram um bloco. */
   pendingLikes: number;
+  /** Comentários "13"/"22" desta rodada que ainda não completaram um bloco. */
+  pendingComments: Record<Team, number>;
   phase: RoundPhase;
   teams: Record<Team, TeamState>;
   config: GameConfig;
@@ -44,7 +50,7 @@ export interface GameState {
 
 /** real = TikTok LIVE; auto = gerador do jogo; test = simulação do painel administrativo. */
 export type EventOrigin = 'real' | 'auto' | 'test';
-export type EventKind = 'like' | 'follow' | 'gift' | 'auto' | 'manual';
+export type EventKind = 'like' | 'follow' | 'gift' | 'comment' | 'auto' | 'manual';
 
 export interface IncrementEvent {
   id: string;
@@ -60,7 +66,7 @@ export interface IncrementEvent {
   source: 'automatic' | 'admin' | 'gift';
   origin: EventOrigin;
   kind: EventKind;
-  effect?: 'like' | 'follow' | 'gift';
+  effect?: 'like' | 'follow' | 'gift' | 'comment';
   /** Identificador visual do presente (catálogo do jogo), não o ID do TikTok. */
   giftId?: string;
   giftName?: string;
@@ -237,6 +243,8 @@ export const DEFAULT_CONFIG: GameConfig = {
   autoTeams: { lula: true, bolsonaro: true },
   autoRestart: true,
   likesPerBlock: 120,
+  commentVotes: true,
+  commentsPerBlock: 20,
 };
 
 /** Nomes exibidos no jogo (os identificadores internos continuam 'lula' e 'bolsonaro'). */

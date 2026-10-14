@@ -41,6 +41,7 @@ const REASON_LABEL: Record<string, string> = {
   result_phase: 'tela de resultado',
   paused: 'partida pausada',
   recent_cache: 'duplicado',
+  comment_rate_limited: 'comentário repetido rápido demais',
   accumulated: 'acumulando curtidas',
   already_recorded: 'duplicado',
 };
@@ -242,6 +243,8 @@ export function Admin() {
             <div className="panel-title"><span>02</span><div><h2>Configuração</h2><p>Parâmetros aplicados em tempo real</p></div></div>
             <label>Meta de blocos<input type="number" min="10" max="100000" value={form.target} onChange={(e) => update('target', Number(e.target.value))} /></label>
             <label>Curtidas por bloco ({TEAM_LABELS.lula})<input type="number" min="1" max="10000" value={form.likesPerBlock} onChange={(e) => update('likesPerBlock', Number(e.target.value))} /></label>
+            <label>Comentários “13”/“22” por bloco<input type="number" min="1" max="10000" value={form.commentsPerBlock} onChange={(e) => update('commentsPerBlock', Number(e.target.value))} /></label>
+            <Toggle title="Comentários valem blocos" hint="Quem comenta só “13” ou “22” ajuda a equipe (1 por pessoa a cada 3 s)" value={form.commentVotes} onChange={(value) => update('commentVotes', value)} />
             <label>Duração da rodada <span>{Math.round(form.durationSeconds / 60 * 10) / 10} min</span><input type="range" min="30" max="1800" step="30" value={form.durationSeconds} onChange={(e) => update('durationSeconds', Number(e.target.value))} /></label>
             <label>Intervalo entre rodadas <span>{form.resultSeconds} s</span><input type="range" min="3" max="60" step="1" value={form.resultSeconds} onChange={(e) => update('resultSeconds', Number(e.target.value))} /></label>
             <label>Velocidade automática <span>{form.autoSpeed.toFixed(1)}×</span><input type="range" min="0.1" max="5" step="0.1" value={form.autoSpeed} onChange={(e) => update('autoSpeed', Number(e.target.value))} /></label>
@@ -262,6 +265,7 @@ export function Admin() {
                 <div><span>{team === 'lula' ? 'EQUIPE VERMELHA · LULA' : 'EQUIPE VERDE · BOLSONARO'}</span><h3>{TEAM_LABELS[team]}</h3></div>
                 <strong>{state.teams[team].score.toLocaleString('pt-BR')}<small> / {state.config.target.toLocaleString('pt-BR')}</small></strong>
                 {team === 'lula' && <p className="admin-hint">Curtidas acumuladas: {state.pendingLikes ?? 0} / {state.config.likesPerBlock} para o próximo bloco</p>}
+                {state.config.commentVotes && <p className="admin-hint">Comentários “{TEAM_LABELS[team]}” acumulados: {state.pendingComments?.[team] ?? 0} / {state.config.commentsPerBlock}</p>}
                 <div className="admin-progress"><span style={{ width: `${progress(team)}%` }} /></div>
                 {overview.server.testEvents && (
                   <div className="test-actions">
@@ -284,7 +288,14 @@ export function Admin() {
               <button className="event-button event-button--lula" onClick={() => void run('LIKES de teste', '/test/like', { body: { count: Math.min(100, state.config.likesPerBlock) } })}><span>❤</span><b>{Math.min(100, state.config.likesPerBlock)} LIKES</b><small>{state.config.likesPerBlock} LIKES = +1 {TEAM_LABELS.lula}</small></button>
               <button className="event-button event-button--bolsonaro" onClick={() => void run('SEGUIR de teste', '/test/follow', { body: {} })}><span>♟</span><b>SEGUIR</b><small>+1 {TEAM_LABELS.bolsonaro}</small></button>
             </div>
-            <div className="block-test-grid">
+            <div className="event-specials">
+            {TEAMS.map((team) => (
+              <button key={team} className={`event-button event-button--${team}`} onClick={() => void run(`${state.config.commentsPerBlock} comentários “${TEAM_LABELS[team]}”`, '/test/comment', { body: { team, count: Math.min(100, state.config.commentsPerBlock) } })}>
+                <span>💬</span><b>{Math.min(100, state.config.commentsPerBlock)}× “{TEAM_LABELS[team]}”</b><small>{state.config.commentsPerBlock} COMENTÁRIOS = +1</small>
+              </button>
+            ))}
+          </div>
+          <div className="block-test-grid">
               {TEAMS.map((team) => (
                 <div className={`block-test-column block-test-column--${team}`} key={team}>
                   <h3>TESTAR PILHA {TEAM_LABELS[team]}</h3>
@@ -389,7 +400,7 @@ function EventFeed({ title, items }: { title: string; items: ProcessedSummary[] 
             <li key={`${item.at}-${index}`} className={`event-feed__item event-feed__item--${item.status}`}>
               <time>{new Date(item.at).toLocaleTimeString('pt-BR')}</time>
               {item.origin === 'test' && <em>TESTE</em>}
-              <b>{item.kind === 'gift' ? (item.giftName ?? `presente ${item.giftId ?? ''}`) : item.kind === 'like' ? 'curtida' : 'seguidor'}</b>
+              <b>{item.kind === 'gift' ? (item.giftName ?? `presente ${item.giftId ?? ''}`) : item.kind === 'like' ? 'curtida' : item.kind === 'comment' ? 'comentário' : 'seguidor'}</b>
               {item.status === 'applied'
                 ? <span className={`team-tag team-tag--${item.team}`}>+{item.points} → {item.team ? TEAM_LABELS[item.team] : ''}</span>
                 : <span className="reason">{item.status === 'duplicate' ? 'duplicado' : REASON_LABEL[item.reason ?? ''] ?? item.reason ?? item.status}</span>}
@@ -524,7 +535,7 @@ function GiftMapping({ token, overview, onChanged, onNotice }: {
 }
 
 function describeEvent(item: ProcessedSummary): string {
-  const what = item.kind === 'gift' ? `presente ${item.giftName ?? item.giftId ?? ''}`.trim() : item.kind === 'like' ? 'curtida' : 'seguidor';
+  const what = item.kind === 'gift' ? `presente ${item.giftName ?? item.giftId ?? ''}`.trim() : item.kind === 'like' ? 'curtida' : item.kind === 'comment' ? 'comentário' : 'seguidor';
   if (item.status === 'applied') return `${what} → +${item.points} para ${item.team ? TEAM_LABELS[item.team] : ''}`;
   if (item.status === 'accumulated') return `${what} → acumulando para o próximo bloco`;
   if (item.status === 'duplicate') return `${what} → duplicado`;
@@ -541,7 +552,7 @@ function IgnoredTable({ rows }: { rows: IgnoredReasonRow[] }) {
           <tbody>
             {rows.map((row) => (
               <tr key={`${row.kind}-${row.reason}`}>
-                <td>{row.kind === 'gift' ? 'presente' : row.kind === 'like' ? 'curtida' : 'seguir'}</td>
+                <td>{row.kind === 'gift' ? 'presente' : row.kind === 'like' ? 'curtida' : row.kind === 'comment' ? 'comentário' : 'seguir'}</td>
                 <td>{REASON_LABEL[row.reason] ?? row.reason}</td>
                 <td>{row.events}</td>
               </tr>

@@ -7,6 +7,7 @@ const initialState: GameState = {
   roundId: 0,
   seq: 0,
   pendingLikes: 0,
+  pendingComments: { lula: 0, bolsonaro: 0 },
   phase: 'playing',
   teams: { lula: { score: 0, wins: 0 }, bolsonaro: { score: 0, wins: 0 } },
   config: DEFAULT_CONFIG,
