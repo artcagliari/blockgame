@@ -3,7 +3,7 @@ import type { Socket } from 'socket.io-client';
 import { GiftIcon } from '../components/GiftIcon';
 import { AdminAudio } from './AdminAudio';
 import { GIFTS } from '../game/gifts';
-import type { GameConfig, Team } from '../game/types';
+import { TEAM_LABELS, type GameConfig, type Team } from '../game/types';
 import {
   ApiError,
   api,
@@ -41,6 +41,7 @@ const REASON_LABEL: Record<string, string> = {
   result_phase: 'tela de resultado',
   paused: 'partida pausada',
   recent_cache: 'duplicado',
+  accumulated: 'acumulando curtidas',
   already_recorded: 'duplicado',
 };
 
@@ -240,6 +241,7 @@ export function Admin() {
           <section className="panel settings-panel">
             <div className="panel-title"><span>02</span><div><h2>Configuração</h2><p>Parâmetros aplicados em tempo real</p></div></div>
             <label>Meta de blocos<input type="number" min="10" max="100000" value={form.target} onChange={(e) => update('target', Number(e.target.value))} /></label>
+            <label>Curtidas por bloco ({TEAM_LABELS.lula})<input type="number" min="1" max="10000" value={form.likesPerBlock} onChange={(e) => update('likesPerBlock', Number(e.target.value))} /></label>
             <label>Duração da rodada <span>{Math.round(form.durationSeconds / 60 * 10) / 10} min</span><input type="range" min="30" max="1800" step="30" value={form.durationSeconds} onChange={(e) => update('durationSeconds', Number(e.target.value))} /></label>
             <label>Intervalo entre rodadas <span>{form.resultSeconds} s</span><input type="range" min="3" max="60" step="1" value={form.resultSeconds} onChange={(e) => update('resultSeconds', Number(e.target.value))} /></label>
             <label>Velocidade automática <span>{form.autoSpeed.toFixed(1)}×</span><input type="range" min="0.1" max="5" step="0.1" value={form.autoSpeed} onChange={(e) => update('autoSpeed', Number(e.target.value))} /></label>
@@ -257,8 +259,9 @@ export function Admin() {
           <div className="team-live-grid">
             {TEAMS.map((team) => (
               <article className={`team-live team-live--${team}`} key={team}>
-                <div><span>{team === 'lula' ? 'EQUIPE VERMELHA' : 'EQUIPE VERDE'}</span><h3>{team.toUpperCase()}</h3></div>
+                <div><span>{team === 'lula' ? 'EQUIPE VERMELHA · LULA' : 'EQUIPE VERDE · BOLSONARO'}</span><h3>{TEAM_LABELS[team]}</h3></div>
                 <strong>{state.teams[team].score.toLocaleString('pt-BR')}<small> / {state.config.target.toLocaleString('pt-BR')}</small></strong>
+                {team === 'lula' && <p className="admin-hint">Curtidas acumuladas: {state.pendingLikes ?? 0} / {state.config.likesPerBlock} para o próximo bloco</p>}
                 <div className="admin-progress"><span style={{ width: `${progress(team)}%` }} /></div>
                 {overview.server.testEvents && (
                   <div className="test-actions">
@@ -278,13 +281,13 @@ export function Admin() {
           <section className="panel event-panel">
             <div className="panel-title"><span>05</span><div><h2>Testar eventos visuais</h2><p>Simulações aparecem como TESTE e ficam fora dos relatórios reais</p></div></div>
               <div className="event-specials">
-              <button className="event-button event-button--lula" onClick={() => void run('LIKE de teste', '/test/like', { body: { count: 1 } })}><span>❤</span><b>LIKE</b><small>+1 LULA</small></button>
-              <button className="event-button event-button--bolsonaro" onClick={() => void run('SEGUIR de teste', '/test/follow', { body: {} })}><span>♟</span><b>SEGUIR</b><small>+1 BOLSONARO</small></button>
+              <button className="event-button event-button--lula" onClick={() => void run('LIKES de teste', '/test/like', { body: { count: Math.min(100, state.config.likesPerBlock) } })}><span>❤</span><b>{Math.min(100, state.config.likesPerBlock)} LIKES</b><small>{state.config.likesPerBlock} LIKES = +1 {TEAM_LABELS.lula}</small></button>
+              <button className="event-button event-button--bolsonaro" onClick={() => void run('SEGUIR de teste', '/test/follow', { body: {} })}><span>♟</span><b>SEGUIR</b><small>+1 {TEAM_LABELS.bolsonaro}</small></button>
             </div>
             <div className="block-test-grid">
               {TEAMS.map((team) => (
                 <div className={`block-test-column block-test-column--${team}`} key={team}>
-                  <h3>TESTAR PILHA {team.toUpperCase()}</h3>
+                  <h3>TESTAR PILHA {TEAM_LABELS[team]}</h3>
                   <div>
                     {BLOCK_TEST_AMOUNTS.map((amount) => (
                       <button key={amount} onClick={() => void run(`+${amount} ${team}`, '/test/increment', { body: { team, amount } })} aria-label={`Adicionar ${amount} blocos para ${team}`}>
@@ -388,7 +391,7 @@ function EventFeed({ title, items }: { title: string; items: ProcessedSummary[] 
               {item.origin === 'test' && <em>TESTE</em>}
               <b>{item.kind === 'gift' ? (item.giftName ?? `presente ${item.giftId ?? ''}`) : item.kind === 'like' ? 'curtida' : 'seguidor'}</b>
               {item.status === 'applied'
-                ? <span className={`team-tag team-tag--${item.team}`}>+{item.points} {item.team?.toUpperCase()}</span>
+                ? <span className={`team-tag team-tag--${item.team}`}>+{item.points} → {item.team ? TEAM_LABELS[item.team] : ''}</span>
                 : <span className="reason">{item.status === 'duplicate' ? 'duplicado' : REASON_LABEL[item.reason ?? ''] ?? item.reason ?? item.status}</span>}
             </li>
           ))}
@@ -434,7 +437,7 @@ function GiftMapping({ token, overview, onChanged, onNotice }: {
       <div className="gift-map-grid">
         {TEAMS.map((team) => (
           <div className={`gift-map-column gift-map-column--${team}`} key={team}>
-            <h3>{team === 'lula' ? 'LULA — VERMELHO' : 'BOLSONARO — VERDE'}</h3>
+            <h3>{team === 'lula' ? `${TEAM_LABELS.lula} (LULA) — VERMELHO` : `${TEAM_LABELS.bolsonaro} (BOLSONARO) — VERDE`}</h3>
             {overview.slots.filter((slot) => slot.team === team).map((slot) => {
               const draft = drafts[slot.slotId] ?? slot.giftId ?? '';
               const known = overview.knownGifts.find((gift) => gift.giftId === draft);
@@ -522,7 +525,8 @@ function GiftMapping({ token, overview, onChanged, onNotice }: {
 
 function describeEvent(item: ProcessedSummary): string {
   const what = item.kind === 'gift' ? `presente ${item.giftName ?? item.giftId ?? ''}`.trim() : item.kind === 'like' ? 'curtida' : 'seguidor';
-  if (item.status === 'applied') return `${what} → +${item.points} ${item.team?.toUpperCase()}`;
+  if (item.status === 'applied') return `${what} → +${item.points} para ${item.team ? TEAM_LABELS[item.team] : ''}`;
+  if (item.status === 'accumulated') return `${what} → acumulando para o próximo bloco`;
   if (item.status === 'duplicate') return `${what} → duplicado`;
   return `${what} → descartado (${REASON_LABEL[item.reason ?? ''] ?? item.reason ?? item.status})`;
 }

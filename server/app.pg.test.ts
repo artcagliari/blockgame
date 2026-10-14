@@ -50,13 +50,15 @@ describe('aplicação completa sobre PostgreSQL real', () => {
     first.connection.emit('follow', { common: { msgId: 'pg-follow-1' }, user: { userId: '12' } });
     await sleep(400);
     const before = first.app.game.getState();
-    expect(before.teams.lula.score).toBe(2 * 30 + 4);
+    expect(before.teams.lula.score).toBe(2 * 30); // 4 curtidas ficam acumuladas (120 = 1 bloco)
+    expect(before.pendingLikes).toBe(4);
     expect(before.teams.bolsonaro.score).toBe(1);
     await first.app.stop();
 
     const second = await boot();
     const after = second.app.game.getState();
-    expect(after.teams.lula.score).toBe(64);
+    expect(after.teams.lula.score).toBe(60);
+    expect(after.pendingLikes).toBe(4); // acumulado sobrevive ao reinício
     expect(after.teams.bolsonaro.score).toBe(1);
     expect(after.roundId).toBe(before.roundId);
     expect(after.seq).toBeGreaterThan(before.seq);
@@ -65,7 +67,8 @@ describe('aplicação completa sobre PostgreSQL real', () => {
     second.connection.emit('like', { common: { msgId: 'pg-like-1' }, count: 4, user: { userId: '11' } });
     second.connection.emit('follow', { common: { msgId: 'pg-follow-2' }, user: { userId: '12' } });
     await sleep(400);
-    expect(second.app.game.getState().teams.lula.score).toBe(64);
+    expect(second.app.game.getState().teams.lula.score).toBe(60);
+    expect(second.app.game.getState().pendingLikes).toBe(4); // reentrega da curtida não soma
     expect(second.app.game.getState().teams.bolsonaro.score).toBe(1);
     const overview = await (await admin(second.base, '/overview')).json();
     expect(overview.server.store).toBe('postgres');

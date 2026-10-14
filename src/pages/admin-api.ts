@@ -59,7 +59,7 @@ export interface ProcessedSummary {
   at: number;
   origin: 'real' | 'test';
   kind: string;
-  status: 'applied' | 'duplicate' | 'ignored' | 'error';
+  status: 'applied' | 'accumulated' | 'duplicate' | 'ignored' | 'error';
   reason?: string;
   team?: Team;
   points?: number;

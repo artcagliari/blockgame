@@ -129,11 +129,13 @@ describe('3 e 4. seguidores e curtidas', () => {
 
   it('curtidas usam só a quantidade incremental, nunca o total da sala', async () => {
     const { connection, app } = await boot();
-    connection.emit('like', { common: { msgId: 'l1' }, count: 15, total: '123456', user: { userId: '5' } });
-    connection.emit('like', { common: { msgId: 'l2' }, count: 6, total: '123462', user: { userId: '6' } });
-    connection.emit('like', { common: { msgId: 'l1' }, count: 15, total: '123456', user: { userId: '5' } });
+    connection.emit('like', { common: { msgId: 'l1' }, count: 100, total: '123456', user: { userId: '5' } });
+    connection.emit('like', { common: { msgId: 'l2' }, count: 50, total: '123506', user: { userId: '6' } });
+    connection.emit('like', { common: { msgId: 'l1' }, count: 100, total: '123456', user: { userId: '5' } });
     await sleep(200);
-    expect(app.game.getState().teams.lula.score).toBe(21);
+    // 150 curtidas (a reentrega não conta) = 1 bloco + 30 acumuladas; o total da sala nunca entra
+    expect(app.game.getState().teams.lula.score).toBe(1);
+    expect(app.game.getState().pendingLikes).toBe(30);
   });
 });
 
@@ -259,7 +261,7 @@ describe('modo somente LIVE (produção)', () => {
       expect(response.status, route).toBe(403);
     }
     expect(app.game.getState().teams.lula.score).toBe(0);
-    connection.emit('like', { common: { msgId: 'real-1' }, count: 2, user: { userId: '9' } });
+    for (const [index, count] of [100, 100, 40].entries()) connection.emit('like', { common: { msgId: `real-${index}` }, count, user: { userId: '9' } });
     await sleep(150);
     expect(app.game.getState().teams.lula.score).toBe(2);
     expect(app.game.getState().startedAt).not.toBeNull();

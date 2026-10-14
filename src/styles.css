@@ -167,6 +167,8 @@ button { color: inherit; }
 .special-trigger b, .special-trigger small { display: block; }
 .special-trigger b { font: 900 1.85cqw/1 'Barlow Condensed', sans-serif; }
 .special-trigger small { margin-top: .3cqw; color: #ffcf52; font: 800 1.15cqw/1 Inter, sans-serif; }
+.special-trigger__copy { position: relative; display: block; min-width: 0; }
+.special-trigger__copy b, .special-trigger__copy small { white-space: nowrap; }
 .gift-card__copy { min-width: 0; }
 .gift-card__copy b, .gift-card__copy small { display: block; white-space: nowrap; }
 .gift-card__copy b { overflow: hidden; color: #fff; font: 900 1.42cqw/1 'Barlow Condensed', sans-serif; letter-spacing: .015em; text-overflow: ellipsis; }

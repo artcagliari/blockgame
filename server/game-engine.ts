@@ -32,7 +32,8 @@ export type RejectReason = 'paused' | 'result_phase' | 'invalid_amount' | 'targe
 export interface ScorePlan {
   baseSeq: number;
   next: GameState;
-  event: IncrementEvent;
+  /** null quando a mudança não adiciona blocos (ex.: curtidas acumulando). */
+  event: IncrementEvent | null;
   roundEnded: boolean;
 }
 
@@ -78,6 +79,7 @@ export class GameEngine extends EventEmitter {
       round: 1,
       roundId: 1,
       seq: 1,
+      pendingLikes: 0,
       phase: 'playing',
       teams: { lula: { score: 0, wins: 0 }, bolsonaro: { score: 0, wins: 0 } },
       config: merged,
@@ -127,6 +129,7 @@ export class GameEngine extends EventEmitter {
     const now = this.now();
     state.config = normalizeConfig({ ...DEFAULT_CONFIG, ...state.config });
     state.roundId = state.roundId ?? 1;
+    state.pendingLikes = Number.isFinite(state.pendingLikes) ? state.pendingLikes : 0;
     state.seq = (state.seq ?? 0) + 1;
     if (state.startedAt === null) {
       // Rodada ainda aguardando o primeiro evento: nada a ajustar.
@@ -222,11 +225,36 @@ export class GameEngine extends EventEmitter {
     return { baseSeq: this.state.seq, next, event, roundEnded };
   }
 
+  /**
+   * Curtidas: acumulam até completar `likesPerBlock` e só então viram blocos.
+   * O resto fica guardado para a próxima curtida (zera no início de cada rodada).
+   */
+  planLikes(team: Team, likes: number, meta: ScoreMeta): ScorePlan | { rejected: RejectReason } {
+    if (this.state.phase === 'paused') return { rejected: 'paused' };
+    if (this.state.phase !== 'playing') return { rejected: 'result_phase' };
+    if (!Number.isFinite(likes) || likes < 1) return { rejected: 'invalid_amount' };
+    const per = this.state.config.likesPerBlock;
+    const total = this.state.pendingLikes + Math.round(likes);
+    const blocks = Math.floor(total / per);
+    const rest = total % per;
+    if (blocks === 0) {
+      const next = structuredClone(this.state);
+      next.pendingLikes = rest;
+      next.seq += 1;
+      next.serverNow = this.now();
+      return { baseSeq: this.state.seq, next, event: null, roundEnded: false };
+    }
+    const plan = this.plan(team, blocks, { ...meta, count: Math.round(likes) });
+    if ('rejected' in plan) return plan;
+    plan.next.pendingLikes = rest;
+    return plan;
+  }
+
   /** Aplica um plano previamente calculado e notifica os assinantes. */
   commit(plan: ScorePlan): void {
     if (plan.baseSeq !== this.state.seq) throw new StalePlanError();
     this.state = plan.next;
-    this.emit('increment', plan.event);
+    if (plan.event) this.emit('increment', plan.event);
     if (plan.roundEnded) this.emit('roundEnded', this.getState());
     this.broadcast();
   }
@@ -234,6 +262,14 @@ export class GameEngine extends EventEmitter {
   /** Atalho síncrono: calcula e aplica. Usado pelo gerador automático. */
   increment(team: Team, amount: number, meta: ScoreMeta): IncrementEvent | null {
     const plan = this.plan(team, amount, meta);
+    if ('rejected' in plan) return null;
+    this.commit(plan);
+    return plan.event;
+  }
+
+  /** Atalho síncrono para curtidas (usado em testes). */
+  addLikes(team: Team, likes: number, meta: ScoreMeta): IncrementEvent | null {
+    const plan = this.planLikes(team, likes, meta);
     if ('rejected' in plan) return null;
     this.commit(plan);
     return plan.event;
@@ -299,6 +335,7 @@ export class GameEngine extends EventEmitter {
     next.phase = 'playing';
     next.teams.lula.score = 0;
     next.teams.bolsonaro.score = 0;
+    next.pendingLikes = 0;
     next.startedAt = null;
     next.pausedAt = null;
     next.pauseAccumulatedMs = 0;
@@ -336,6 +373,7 @@ export function normalizeConfig(input: Partial<GameConfig>): GameConfig {
       bolsonaro: Boolean(base.autoTeams?.bolsonaro ?? true),
     },
     autoRestart: Boolean(base.autoRestart),
+    likesPerBlock: clamp(Math.round(base.likesPerBlock ?? 120), 1, 10_000),
   };
 }
 

@@ -8,7 +8,7 @@ import { GameStage } from '../game/GameStage';
 import { useGame } from '../game/useGame';
 import { useOverlayAudio } from '../game/useOverlayAudio';
 import { AudioDiagnostics } from '../components/AudioDiagnostics';
-import type { GameState, IncrementEvent, Team } from '../game/types';
+import { TEAM_LABELS, type GameState, type IncrementEvent, type Team } from '../game/types';
 
 interface FloatingGain extends IncrementEvent {
   createdAt: number;
@@ -78,8 +78,8 @@ export function Overlay() {
   const timeLabel = `${String(Math.floor(remaining / 60)).padStart(2, '0')}:${String(remaining % 60).padStart(2, '0')}`;
   const resultText = useMemo(() => {
     if (state.winner === 'draw') return 'EMPATE!';
-    if (state.winner === 'lula') return 'LULA VENCEU!';
-    if (state.winner === 'bolsonaro') return 'BOLSONARO VENCEU!';
+    if (state.winner === 'lula') return `${TEAM_LABELS.lula} VENCEU!`;
+    if (state.winner === 'bolsonaro') return `${TEAM_LABELS.bolsonaro} VENCEU!`;
     return '';
   }, [state.winner]);
   const latestEffect = gains.at(-1);
@@ -122,6 +122,7 @@ export function Overlay() {
 
         <GiftRail
           team="lula"
+          likesPerBlock={state.config.likesPerBlock}
           activeId={latestEffect?.team === 'lula' ? latestEffect.giftId : undefined}
           specialActive={latestEffect?.team === 'lula' && latestEffect.effect === 'like'}
         />

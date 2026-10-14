@@ -9,10 +9,11 @@ import type { Store } from './store/types.js';
 import type { FollowLiveEvent, GiftLiveEvent, LikeLiveEvent } from './tiktok/events.js';
 import type { LiveConnection } from './tiktok/live-service.js';
 
-export async function makeHarness(options: { store?: Store; target?: number; mapAll?: boolean } = {}) {
+export async function makeHarness(options: { store?: Store; target?: number; mapAll?: boolean; likesPerBlock?: number } = {}) {
   const store = options.store ?? new MemoryStore();
   await store.init();
-  const engine = new GameEngine({ target: options.target ?? 2000 }, { autoplay: false });
+  // Testes de ingestão usam 1 curtida = 1 bloco; a conversão 120:1 tem testes próprios.
+  const engine = new GameEngine({ target: options.target ?? 2000, likesPerBlock: options.likesPerBlock ?? 1 }, { autoplay: false });
   const game = new GameService(engine, store, silentLogger);
   const registry = new GiftRegistry(store);
   await registry.init();

@@ -11,6 +11,8 @@ export interface ScoreInput {
   kind: EventKind;
   team: Team;
   amount: number;
+  /** Curtidas brutas: convertidas em blocos segundo `likesPerBlock`. */
+  likes?: number;
   effect?: IncrementEvent['effect'];
   /** Identificador visual do presente (catálogo do jogo). */
   giftId?: string;
@@ -28,6 +30,7 @@ export interface ScoreInput {
 
 export type ScoreOutcome =
   | { status: 'applied'; event: IncrementEvent }
+  | { status: 'accumulated'; pendingLikes: number; likesPerBlock: number }
   | { status: 'duplicate'; reason: string }
   | { status: 'ignored'; reason: string }
   | { status: 'error'; reason: string };
@@ -159,7 +162,9 @@ export class GameService extends EventEmitter {
       viewerName: input.viewerName,
       count: input.count,
     };
-    const plan = this.engine.plan(input.team, input.amount, meta);
+    const plan = input.likes !== undefined
+      ? this.engine.planLikes(input.team, input.likes, meta)
+      : this.engine.plan(input.team, input.amount, meta);
     if ('rejected' in plan) {
       await this.ignore({
         dedupeKey: input.dedupeKey, origin: input.origin, kind: input.kind, reason: plan.rejected,
@@ -180,8 +185,8 @@ export class GameService extends EventEmitter {
           kind: input.kind,
           status: 'applied',
           team: input.team,
-          points: plan.event.amount,
-          roundId: plan.event.roundId,
+          points: plan.event?.amount ?? 0,
+          roundId: plan.next.roundId,
           sessionKey: input.sessionKey,
           userHash: input.userHash,
           giftId: input.rawGiftId,
@@ -204,6 +209,7 @@ export class GameService extends EventEmitter {
     this.engine.commit(plan);
     this.remember(input.dedupeKey);
     this.lastSavedSeq = plan.next.seq;
+    if (!plan.event) return { status: 'accumulated', pendingLikes: plan.next.pendingLikes, likesPerBlock: plan.next.config.likesPerBlock };
     return { status: 'applied', event: plan.event };
   }
 

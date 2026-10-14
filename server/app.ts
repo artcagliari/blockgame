@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { createServer, type Server as HttpServer } from 'node:http';
 import path from 'node:path';
 import cors from 'cors';
@@ -187,6 +188,7 @@ export function createApp(deps: AppDeps): App {
     autoEnabled: z.boolean(),
     autoTeams: z.object({ lula: z.boolean(), bolsonaro: z.boolean() }).partial(),
     autoRestart: z.boolean(),
+    likesPerBlock: z.number().int().min(1).max(10_000),
   }).partial().strict();
   admin.put('/game/config', needLeader, wrap(async (req, res) => {
     const parsed = configSchema.safeParse(req.body);
@@ -476,7 +478,12 @@ export function createApp(deps: AppDeps): App {
 
   if (deps.staticDir) {
     const dist = path.resolve(deps.staticDir);
-    app.use(express.static(dist));
+    // index.html nunca em cache: um deploy novo precisa chegar ao LIVE Studio.
+    app.use((req, res, next) => {
+      if (req.method === 'GET' && !req.path.startsWith('/assets/') && !req.path.startsWith('/audio/')) res.setHeader('Cache-Control', 'no-cache');
+      next();
+    });
+    app.use(express.static(dist, { index: false }));
     app.get('*path', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
   }
 
@@ -492,6 +499,15 @@ export function createApp(deps: AppDeps): App {
     void store.logError('http', String((error as Error)?.message ?? error)).catch(() => {});
     if (!res.headersSent) res.status(500).json({ error: 'internal_error' });
   });
+
+  // Script principal publicado (muda a cada build): o overlay compara e se recarrega.
+  let buildScript: string | null = null;
+  if (deps.staticDir) {
+    try {
+      const html = readFileSync(path.join(path.resolve(deps.staticDir), 'index.html'), 'utf8');
+      buildScript = /<script[^>]+type="module"[^>]+src="([^"]+)"/.exec(html)?.[1] ?? null;
+    } catch { buildScript = null; }
+  }
 
   // ---------- Socket.IO ----------
   const httpServer = createServer(app);
@@ -540,6 +556,7 @@ export function createApp(deps: AppDeps): App {
   ]);
 
   io.on('connection', (socket) => {
+    socket.emit('build', { script: buildScript });
     if (role === 'leader') {
       socket.emit('state', game.getState());
       socket.emit('audio:manifest', audio.manifest());

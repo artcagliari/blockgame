@@ -1,4 +1,4 @@
-import type { Team } from '../game/types';
+import { TEAM_LABELS, type Team } from '../game/types';
 
 interface TeamHudProps {
   team: Team;
@@ -8,7 +8,7 @@ interface TeamHudProps {
 }
 
 export function TeamHud({ team, score, target, wins }: TeamHudProps) {
-  const label = team === 'lula' ? 'LULA' : 'BOLSONARO';
+  const label = TEAM_LABELS[team];
   const progress = Math.min(100, (score / target) * 100);
   return (
     <section className={`team-hud team-hud--${team}`} aria-label={`Equipe ${label}`}>

@@ -126,10 +126,12 @@ describe('backend integrado', () => {
     const socket = overlay(base);
     await once(socket, 'state');
     const incoming = once<IncrementEvent>(socket, 'increment');
-    connection.emit('like', { common: { msgId: 'like-1', roomId: 'room-fake' }, count: 1, total: '77', user: { userId: '42', nickname: 'Maria' } });
+    // padrão do jogo: 120 curtidas = 1 bloco
+    connection.emit('like', { common: { msgId: 'like-0', roomId: 'room-fake' }, count: 60, total: '717', user: { userId: '41', nickname: 'João' } });
+    connection.emit('like', { common: { msgId: 'like-1', roomId: 'room-fake' }, count: 60, total: '777', user: { userId: '42', nickname: 'Maria' } });
     const event = await incoming;
     expect(event).toMatchObject({
-      team: 'lula', amount: 1, total: 1, opponentTotal: 0, origin: 'real', kind: 'like', effect: 'like',
+      team: 'lula', amount: 1, total: 1, count: 60, opponentTotal: 0, origin: 'real', kind: 'like', effect: 'like',
       viewerName: 'Maria', roundId: 1,
     });
     expect(typeof event.id).toBe('string');
@@ -169,6 +171,7 @@ describe('backend integrado', () => {
   it('simulações são marcadas TESTE e ficam fora das estatísticas reais', async () => {
     const { base, app, connection } = await boot();
     await app.live.connect();
+    await admin(base, '/game/config', { method: 'PUT', body: JSON.stringify({ likesPerBlock: 1 }) });
     await post(base, '/test/like', { count: 3 });
     await post(base, '/test/follow');
     await post(base, '/test/gift', { slotId: 'bolsonaro:turbo' });

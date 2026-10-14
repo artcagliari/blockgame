@@ -107,7 +107,7 @@ export class LivePipeline extends EventEmitter {
       amount = this.options.maxLikesPerEvent;
     }
     return this.game.score({
-      dedupeKey: key, origin, kind: 'like', effect: 'like', team: 'lula', amount, viewerName: event.userName || undefined,
+      dedupeKey: key, origin, kind: 'like', effect: 'like', team: 'lula', amount, likes: amount, viewerName: event.userName || undefined,
       sessionKey, userHash,
     });
   }

@@ -13,6 +13,8 @@ export interface GameConfig {
   autoTeams: Record<Team, boolean>;
   /** Inicia a próxima rodada sozinho ao fim do intervalo de resultado. */
   autoRestart: boolean;
+  /** Quantas curtidas valem 1 bloco para o Lula. */
+  likesPerBlock: number;
 }
 
 export interface TeamState {
@@ -27,6 +29,8 @@ export interface GameState {
   roundId: number;
   /** Sequência monotônica do estado oficial: cada mudança incrementa. */
   seq: number;
+  /** Curtidas recebidas nesta rodada que ainda não completaram um bloco. */
+  pendingLikes: number;
   phase: RoundPhase;
   teams: Record<Team, TeamState>;
   config: GameConfig;
@@ -81,6 +85,8 @@ export interface ServerToClientEvents {
   'audio:play': (command: AudioPlayCommand) => void;
   /** Interrompe tudo o que estiver tocando e esvazia a fila. */
   'audio:stop': () => void;
+  /** Versão do frontend publicada no servidor; o overlay se recarrega se estiver desatualizado. */
+  build: (info: { script: string | null }) => void;
   /** Comando da música de fundo (pular faixa). Ligar/desligar vai pelo manifesto. */
   'audio:music': (command: { action: 'next' }) => void;
 }
@@ -230,9 +236,11 @@ export const DEFAULT_CONFIG: GameConfig = {
   autoEnabled: false,
   autoTeams: { lula: true, bolsonaro: true },
   autoRestart: true,
+  likesPerBlock: 120,
 };
 
+/** Nomes exibidos no jogo (os identificadores internos continuam 'lula' e 'bolsonaro'). */
 export const TEAM_LABELS: Record<Team, string> = {
-  lula: 'LULA',
-  bolsonaro: 'BOLSONARO',
+  lula: '13',
+  bolsonaro: '22',
 };

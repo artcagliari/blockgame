@@ -10,7 +10,7 @@ describe('GameEngine', () => {
     const state = new GameEngine().getState();
     expect(state.phase).toBe('playing');
     expect(state.startedAt).toBeNull();
-    expect(state.config).toMatchObject({ target: 2000, durationSeconds: 300, resultSeconds: 10, autoRestart: true, autoEnabled: false });
+    expect(state.config).toMatchObject({ target: 2000, durationSeconds: 300, resultSeconds: 10, autoRestart: true, autoEnabled: false, likesPerBlock: 120 });
     expect(state.teams.lula.score).toBe(0);
     expect(state.teams.bolsonaro.score).toBe(0);
   });

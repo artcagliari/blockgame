@@ -349,3 +349,46 @@ describe('concorrência na entrega em rajada (regressão)', () => {
     expect(engine.getState().teams.bolsonaro.score).toBe(1);
   });
 });
+
+describe('curtidas por bloco (padrão do jogo: 120)', () => {
+  it('120 curtidas valem 1 bloco; o resto fica acumulado para o próximo', async () => {
+    const { pipeline, engine } = await makeHarness({ likesPerBlock: 120 });
+    const events: Array<{ amount: number; count?: number }> = [];
+    engine.on('increment', (event) => events.push(event));
+    expect(await pipeline.handle(like({ count: 100 }), 'real', 'room1')).toMatchObject({ status: 'accumulated', pendingLikes: 100 });
+    expect(engine.getState().teams.lula.score).toBe(0);
+    await pipeline.handle(like({ count: 50 }), 'real', 'room1');
+    expect(engine.getState().teams.lula.score).toBe(1);
+    expect(engine.getState().pendingLikes).toBe(30);
+    expect(events).toEqual([expect.objectContaining({ amount: 1, count: 50, kind: 'like', team: 'lula' })]);
+  });
+
+  it('lote grande converte vários blocos de uma vez', async () => {
+    const { pipeline, engine } = await makeHarness({ likesPerBlock: 120 });
+    for (let index = 0; index < 5; index += 1) await pipeline.handle(like({ count: 100 }), 'real', 'room1');
+    expect(engine.getState().teams.lula.score).toBe(4); // 500 curtidas = 4 blocos + 20
+    expect(engine.getState().pendingLikes).toBe(20);
+  });
+
+  it('duplicata não soma curtidas acumuladas; nova rodada zera o acumulado', async () => {
+    const { pipeline, engine, game } = await makeHarness({ likesPerBlock: 120 });
+    const event = like({ count: 90 });
+    await pipeline.handle(event, 'real', 'room1');
+    await pipeline.handle({ ...event }, 'real', 'room1');
+    expect(engine.getState().pendingLikes).toBe(90);
+    await game.resetRound();
+    expect(engine.getState().pendingLikes).toBe(0);
+  });
+
+  it('curtidas não contam durante pausa e o valor é configurável', async () => {
+    const { pipeline, engine, game } = await makeHarness({ likesPerBlock: 120 });
+    await game.pause();
+    await pipeline.handle(like({ count: 100 }), 'real', 'room1');
+    await game.resume();
+    expect(engine.getState().pendingLikes).toBe(0);
+    await game.updateConfig({ likesPerBlock: 10 });
+    await pipeline.handle(like({ count: 25 }), 'real', 'room1');
+    expect(engine.getState().teams.lula.score).toBe(2);
+    expect(engine.getState().pendingLikes).toBe(5);
+  });
+});
