@@ -1,0 +1,47 @@
+{
+  "name": "batalha-dos-blocos-live",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n SERVER,WEB -c cyan,magenta \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:web": "vite",
+    "dev:server": "tsx watch server/index.ts",
+    "build": "tsc -b && vite build && tsc -p server/tsconfig.json",
+    "start": "node server-dist/server/index.js",
+    "test": "vitest run",
+    "test:e2e": "node e2e/overlay.e2e.mjs",
+    "migrate": "node server-dist/server/migrate.js"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "cors": "latest",
+    "express": "latest",
+    "express-rate-limit": "^8.7.1",
+    "pg": "^8.23.1",
+    "pixi.js": "8.22.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "socket.io": "4.8.4",
+    "socket.io-client": "4.8.4",
+    "tiktok-live-connector": "2.5.0",
+    "vite": "8.3.4",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/cors": "latest",
+    "@types/express": "latest",
+    "@types/node": "latest",
+    "@types/pg": "^8.23.1",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "concurrently": "latest",
+    "embedded-postgres": "^18.4.0-beta.17",
+    "tsx": "latest",
+    "typescript": "7.0.2",
+    "vitest": "latest"
+  }
+}
