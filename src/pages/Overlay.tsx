@@ -21,7 +21,7 @@ export function Overlay() {
   const previousPhase = useRef<GameState['phase']>('playing');
   const [gains, setGains] = useState<FloatingGain[]>([]);
   const [audioReady, setAudioReady] = useState(false);
-  const { manager: audioManager, status: audioStatus, builtinEffects, unlock: unlockLibrary } = useOverlayAudio('overlay');
+  const { manager: audioManager, music, status: audioStatus, musicStatus, builtinEffects, unlock: unlockLibrary } = useOverlayAudio('overlay');
   const audioDebug = useMemo(() => new URLSearchParams(window.location.search).has('audioDebug'), []);
   const [clockNow, setClockNow] = useState(Date.now());
 
@@ -56,6 +56,8 @@ export function Overlay() {
     stageRef.current?.setState(state);
     gameAudio.setEnabled(state.config.soundEnabled && builtinEffects);
     audioManager.setMuted(!state.config.soundEnabled);
+    music.setMuted(!state.config.soundEnabled);
+    music.setMatchRunning(state.phase === 'playing' && state.startedAt !== null);
     const leader: Team | null = state.teams.lula.score === state.teams.bolsonaro.score
       ? null
       : state.teams.lula.score > state.teams.bolsonaro.score ? 'lula' : 'bolsonaro';
@@ -64,7 +66,7 @@ export function Overlay() {
     if (state.phase === 'result' && previousPhase.current !== 'result') gameAudio.play('victory');
     if (state.phase === 'playing' && previousPhase.current !== 'playing') gameAudio.play('round');
     previousPhase.current = state.phase;
-  }, [state, builtinEffects, audioManager]);
+  }, [state, builtinEffects, audioManager, music]);
 
   const remaining = getRemainingSeconds(state, clockNow);
   useEffect(() => {
@@ -160,7 +162,7 @@ export function Overlay() {
           </button>
         )}
 
-        {audioDebug && <AudioDiagnostics status={audioStatus} onUnlock={() => void unlockAudio()} compact />}
+        {audioDebug && <AudioDiagnostics status={audioStatus} music={musicStatus} onUnlock={() => void unlockAudio()} compact />}
 
         <footer className="disclaimer">JOGO INTERATIVO <span>•</span> NÃO É PESQUISA OU VOTAÇÃO ELEITORAL</footer>
       </div>

@@ -127,6 +127,9 @@ Ferramentas de diagnóstico:
 4. **Bordões aleatórios**: ative, defina o intervalo e escolha os áudios. Eles só tocam com a rodada em andamento.
 5. **Mesa de sons**: botões para tocar qualquer áudio na LIVE, **PARAR ÁUDIO** e **Volume geral**.
 6. Use **TESTAR NA LIVE** em cada gatilho: dispara o som sem alterar o placar.
+7. **Música de fundo**: envie faixas com a categoria **Música de fundo** (até 20 MB e 15 min cada), monte a playlist e clique **LIGAR MÚSICA**. Ajuste o volume da música e o volume "durante bordões": a música abaixa sozinha quando toca um bordão ou comemoração. **PRÓXIMA FAIXA** pula a música. Marque "Só durante a rodada" se ela não deve tocar enquanto o jogo aguarda a LIVE. **PARAR ÁUDIO** interrompe bordões e efeitos, mas não a música, que tem seu próprio liga/desliga.
+
+> Use apenas músicas que você tenha direito de usar na transmissão: o TikTok pode silenciar ou derrubar LIVEs com música protegida.
 
 ### Checklist de áudio na LIVE de teste
 - [ ] Overlay no LIVE Studio com mecanismo **ATIVO** no diagnóstico

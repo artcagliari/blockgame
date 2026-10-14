@@ -6,7 +6,7 @@ interface AudioOverview {
   clips: AudioClipInfo[];
   config: AudioConfig;
   storage: 'database' | 'filesystem';
-  limits: { maxBytes: number; maxClips: number; formats: string[] };
+  limits: { maxBytes: number; musicMaxBytes: number; maxClips: number; formats: string[] };
   eventKeys: AudioBindingKey[];
   slots: Array<{ key: AudioBindingKey; team: Team; label: string; visualId: string; blocks: number }>;
   defaultCooldowns: Record<string, number>;
@@ -14,13 +14,13 @@ interface AudioOverview {
     storage: string;
     overlays: Array<{
       clientId: string; ageMs: number;
-      status: null | { page: string; engine: string; loaded: number; total: number; failedLoads: string[]; playing: number; queued: number; lastError: string | null; masterVolume: number; userAgent: string };
+      status: null | { page: string; engine: string; loaded: number; total: number; failedLoads: string[]; playing: number; queued: number; lastError: string | null; masterVolume: number; userAgent: string; music?: { state: string; track: string | null; volume: number } };
     }>;
     dispatches: Array<{ playId: string; key: string; clipName: string; at: number; priority: number; acks: Record<string, { status: string; error?: string }> }>;
   };
 }
 
-const CATEGORY_LABEL: Record<AudioCategory, string> = { bordao: 'Bordão', comemoracao: 'Comemoração', efeito: 'Efeito', vinheta: 'Vinheta' };
+const CATEGORY_LABEL: Record<AudioCategory, string> = { bordao: 'Bordão', comemoracao: 'Comemoração', efeito: 'Efeito', vinheta: 'Vinheta', musica: 'Música de fundo' };
 const TEAM_LABEL: Record<AudioTeam, string> = { lula: 'Lula', bolsonaro: 'Bolsonaro', geral: 'Geral' };
 const EVENT_LABEL: Record<string, string> = {
   'event:like': 'Like',
@@ -108,7 +108,8 @@ export function AdminAudio({ token, onNotice }: { token: string; onNotice: (mess
     const values = new FormData(form);
     const file = values.get('file');
     if (!(file instanceof File) || file.size === 0) { onNotice('Escolha um arquivo MP3, WAV ou OGG.'); return; }
-    if (data && file.size > data.limits.maxBytes) { onNotice(`Arquivo maior que ${formatBytes(data.limits.maxBytes)}.`); return; }
+    const limit = values.get('category') === 'musica' ? data?.limits.musicMaxBytes : data?.limits.maxBytes;
+    if (limit && file.size > limit) { onNotice(`Arquivo maior que ${formatBytes(limit)}.`); return; }
     setUploading(true);
     try {
       const duration = await measureDuration(file);
@@ -172,7 +173,9 @@ export function AdminAudio({ token, onNotice }: { token: string; onNotice: (mess
   const { config } = data;
   const binding = (key: AudioBindingKey): AudioBinding => config.bindings[key] ?? { clipIds: [], mode: 'random', enabled: true, cooldownMs: data.defaultCooldowns[key] ?? 0 };
   const saveBinding = (key: AudioBindingKey, patch: Partial<AudioBinding>) => saveConfig({ bindings: { [key]: { ...binding(key), ...patch } } } as Partial<AudioConfig>, 'Vínculo de áudio');
-  const active = clips.filter((clip) => clip.active);
+  const active = clips.filter((clip) => clip.active && clip.category !== 'musica');
+  const soundClips = clips.filter((clip) => clip.category !== 'musica');
+  const musicClips = clips.filter((clip) => clip.category === 'musica');
 
   return (
     <section className="panel audio-panel">
@@ -181,7 +184,7 @@ export function AdminAudio({ token, onNotice }: { token: string; onNotice: (mess
       {/* ---------------- Mesa de sons ---------------- */}
       <div className="audio-board">
         <div className="audio-board__controls">
-          <button className="button button--pause audio-stop" onClick={() => void call('Parar áudio', '/audio/stop', { body: {} })}>■ PARAR ÁUDIO</button>
+          <button className="button button--pause audio-stop" title="Interrompe bordões e efeitos. A música de fundo tem controle próprio." onClick={() => void call('Parar áudio', '/audio/stop', { body: {} })}>■ PARAR ÁUDIO</button>
           <label>Volume geral <span>{Math.round(config.masterVolume * 100)}%</span>
             <input type="range" min={0} max={100} defaultValue={Math.round(config.masterVolume * 100)} key={`mv-${config.masterVolume}`}
               onMouseUp={(event) => void saveConfig({ masterVolume: Number(event.currentTarget.value) / 100 }, 'Volume geral')}
@@ -215,6 +218,51 @@ export function AdminAudio({ token, onNotice }: { token: string; onNotice: (mess
         )}
       </div>
 
+
+      {/* ---------------- Música de fundo ---------------- */}
+      <div className="audio-music">
+        <h3>Música de fundo</h3>
+        <div className="audio-music__row">
+          <button className={`button ${config.music.enabled ? 'button--pause' : 'button--start'}`}
+            disabled={!config.music.enabled && config.music.clipIds.length === 0}
+            onClick={() => void saveConfig({ music: { ...config.music, enabled: !config.music.enabled } }, config.music.enabled ? 'Música desligada' : 'Música ligada')}>
+            {config.music.enabled ? 'Ⅱ DESLIGAR MÚSICA' : '▶ LIGAR MÚSICA'}
+          </button>
+          <button className="button button--reset" disabled={!config.music.enabled} onClick={() => void call('Próxima faixa', '/audio/music/next', { body: {} })}>⏭ PRÓXIMA FAIXA</button>
+          <label>Volume da música <span>{Math.round(config.music.volume * 100)}%</span>
+            <input type="range" min={0} max={100} defaultValue={Math.round(config.music.volume * 100)} key={`muv-${config.music.volume}`}
+              onMouseUp={(event) => void saveConfig({ music: { ...config.music, volume: Number(event.currentTarget.value) / 100 } }, 'Volume da música')} />
+          </label>
+          <label>Durante bordões <span>{Math.round(config.music.duck * 100)}% do volume</span>
+            <input type="range" min={0} max={100} defaultValue={Math.round(config.music.duck * 100)} key={`mud-${config.music.duck}`}
+              onMouseUp={(event) => void saveConfig({ music: { ...config.music, duck: Number(event.currentTarget.value) / 100 } }, 'Redução nos bordões')} />
+          </label>
+          <select value={config.music.mode} onChange={(event) => void saveConfig({ music: { ...config.music, mode: event.target.value as 'shuffle' | 'sequential' } })}>
+            <option value="shuffle">Embaralhar</option>
+            <option value="sequential">Em ordem</option>
+          </select>
+          <label className="audio-inline-toggle">
+            <input type="checkbox" checked={config.music.onlyDuringMatch} onChange={(event) => void saveConfig({ music: { ...config.music, onlyDuringMatch: event.target.checked } })} />
+            Só durante a rodada (pausa enquanto aguarda a LIVE)
+          </label>
+        </div>
+        {musicClips.length === 0
+          ? <p className="admin-hint">Envie faixas com a categoria <b>Música de fundo</b> para montar a playlist.</p>
+          : (
+            <>
+              <p className="admin-hint">Playlist (toca em loop):</p>
+              <ClipPicker clips={musicClips} selected={config.music.clipIds} onChange={(clipIds) => void saveConfig({ music: { ...config.music, clipIds } }, 'Playlist')} />
+            </>
+          )}
+        {data.diagnostics.overlays.some((overlay) => overlay.status?.music) && (
+          <p className="admin-hint">No overlay: {data.diagnostics.overlays.filter((overlay) => overlay.status?.music).map((overlay) => {
+            const music = overlay.status!.music!;
+            const label: Record<string, string> = { playing: 'tocando', paused: 'pausada', off: 'desligada', waiting: 'aguardando a rodada', blocked: 'BLOQUEADA (autoplay)', error: 'ERRO' };
+            return `${label[music.state] ?? music.state}${music.track ? ` · ${music.track}` : ''} · volume ${Math.round(music.volume * 100)}%`;
+          }).join(' | ')}</p>
+        )}
+      </div>
+
       {/* ---------------- Envio ---------------- */}
       <form className="audio-upload" onSubmit={upload}>
         <h3>Enviar áudio</h3>
@@ -224,7 +272,7 @@ export function AdminAudio({ token, onNotice }: { token: string; onNotice: (mess
         <select name="team" defaultValue="geral">{Object.entries(TEAM_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
         <label>Volume <input name="volume" type="number" min={0} max={100} defaultValue={100} />%</label>
         <button className="button button--start" type="submit" disabled={uploading}>{uploading ? 'ENVIANDO…' : 'ENVIAR'}</button>
-        <p className="admin-hint">MP3, WAV ou OGG, até {formatBytes(data.limits.maxBytes)} e 2 minutos. {clips.length}/{data.limits.maxClips} áudios · armazenamento: {data.storage === 'database' ? 'PostgreSQL' : 'volume persistente'}.</p>
+        <p className="admin-hint">MP3, WAV ou OGG. Bordões e efeitos: até {formatBytes(data.limits.maxBytes)} e 2 minutos. Música de fundo: até {formatBytes(data.limits.musicMaxBytes)} e 15 minutos. {clips.length}/{data.limits.maxClips} áudios · armazenamento: {data.storage === 'database' ? 'PostgreSQL' : 'volume persistente'}.</p>
       </form>
 
       {/* ---------------- Biblioteca ---------------- */}
@@ -265,7 +313,7 @@ export function AdminAudio({ token, onNotice }: { token: string; onNotice: (mess
                   {previews[clip.id]
                     ? <audio controls src={previews[clip.id]} preload="auto" />
                     : <button type="button" onClick={() => void preview(clip)}>▶ PRÉVIA</button>}
-                  <button type="button" disabled={!clip.active} onClick={() => void call(`“${clip.name}” na LIVE`, '/audio/play', { body: { clipId: clip.id } })}>REPRODUZIR NA LIVE</button>
+                  {clip.category !== 'musica' && <button type="button" disabled={!clip.active} onClick={() => void call(`“${clip.name}” na LIVE`, '/audio/play', { body: { clipId: clip.id } })}>REPRODUZIR NA LIVE</button>}
                   <label className="audio-replace">SUBSTITUIR
                     <input type="file" accept=".mp3,.wav,.ogg,audio/*" onChange={(event) => { const file = event.target.files?.[0]; if (file) void replace(clip, file); event.target.value = ''; }} />
                   </label>
@@ -283,14 +331,14 @@ export function AdminAudio({ token, onNotice }: { token: string; onNotice: (mess
         <div className="audio-bindings__grid">
           {data.slots.map((slot) => (
             <BindingRow key={slot.key} title={`${slot.team === 'lula' ? 'Lula' : 'Bolsonaro'} · ${slot.label} (+${slot.blocks})`} team={slot.team}
-              binding={binding(slot.key)} clips={clips} onSave={(patch) => void saveBinding(slot.key, patch)}
+              binding={binding(slot.key)} clips={soundClips} onSave={(patch) => void saveBinding(slot.key, patch)}
               onTest={() => void call('Testar gatilho', '/audio/trigger', { body: { key: slot.key } })} />
           ))}
         </div>
         <h3>Eventos automáticos</h3>
         <div className="audio-bindings__grid">
           {data.eventKeys.map((key) => (
-            <BindingRow key={key} title={EVENT_LABEL[key] ?? key} team="geral" binding={binding(key)} clips={clips}
+            <BindingRow key={key} title={EVENT_LABEL[key] ?? key} team="geral" binding={binding(key)} clips={soundClips}
               onSave={(patch) => void saveBinding(key, patch)} onTest={() => void call('Testar gatilho', '/audio/trigger', { body: { key } })} />
           ))}
         </div>
@@ -307,7 +355,7 @@ export function AdminAudio({ token, onNotice }: { token: string; onNotice: (mess
           onBlur={(event) => void saveConfig({ randomBordoes: { ...config.randomBordoes, intervalSeconds: Number(event.target.value) } })} /> s</label>
         <label>Variação ± <input type="number" min={0} max={90} defaultValue={config.randomBordoes.jitterPercent} key={`rj-${config.randomBordoes.jitterPercent}`}
           onBlur={(event) => void saveConfig({ randomBordoes: { ...config.randomBordoes, jitterPercent: Number(event.target.value) } })} /> %</label>
-        <ClipPicker clips={clips} selected={config.randomBordoes.clipIds} onChange={(clipIds) => void saveConfig({ randomBordoes: { ...config.randomBordoes, clipIds } })} />
+        <ClipPicker clips={soundClips} selected={config.randomBordoes.clipIds} onChange={(clipIds) => void saveConfig({ randomBordoes: { ...config.randomBordoes, clipIds } })} />
         <button className="button button--reset" onClick={() => void call('Bordão aleatório', '/audio/random', { body: {} })}>TOCAR UM AGORA</button>
       </div>
 
@@ -320,7 +368,7 @@ export function AdminAudio({ token, onNotice }: { token: string; onNotice: (mess
         </p>
         {data.diagnostics.overlays.length === 0 ? <p className="admin-error">Nenhum overlay conectado informou o estado do áudio.</p> : (
           <table>
-            <thead><tr><th>Overlay</th><th>Mecanismo</th><th>Arquivos</th><th>Tocando/fila</th><th>Último erro</th><th>Visto</th></tr></thead>
+            <thead><tr><th>Overlay</th><th>Mecanismo</th><th>Arquivos</th><th>Tocando/fila</th><th>Música</th><th>Último erro</th><th>Visto</th></tr></thead>
             <tbody>
               {data.diagnostics.overlays.map((overlay) => (
                 <tr key={overlay.clientId}>
@@ -328,6 +376,7 @@ export function AdminAudio({ token, onNotice }: { token: string; onNotice: (mess
                   <td className={`engine engine--${overlay.status?.engine ?? 'unknown'}`}>{overlay.status?.engine === 'running' ? 'ATIVO' : overlay.status?.engine === 'locked' ? 'BLOQUEADO (autoplay)' : overlay.status?.engine ?? '—'}</td>
                   <td>{overlay.status ? `${overlay.status.loaded}/${overlay.status.total}` : '—'}{overlay.status?.failedLoads.length ? ` · ${overlay.status.failedLoads.length} falha(s)` : ''}</td>
                   <td>{overlay.status ? `${overlay.status.playing}/${overlay.status.queued}` : '—'}</td>
+                  <td>{overlay.status?.music ? `${overlay.status.music.state}${overlay.status.music.track ? ` · ${overlay.status.music.track}` : ''}` : '—'}</td>
                   <td>{overlay.status?.lastError ?? '—'}</td>
                   <td>há {Math.round(overlay.ageMs / 1000)} s</td>
                 </tr>

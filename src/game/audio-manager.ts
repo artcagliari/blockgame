@@ -28,6 +28,10 @@ export interface AudioManagerOptions {
   maxQueue?: number;
   userAgent?: string;
   onChange?: () => void;
+  /** Avisado quando começa/termina um bordão (para baixar a música de fundo). */
+  onVoiceChange?: (active: boolean) => void;
+  /** Campos extras do relatório (ex.: estado da música de fundo). */
+  extraStatus?: () => Partial<Extract<AudioReport, { type: 'status' }>>;
 }
 
 export interface AudioManagerStatus {
@@ -123,6 +127,7 @@ export class AudioManager {
     this.active = [];
     for (const item of this.queue) this.ack(item, 'dropped', 'parado pelo administrador');
     this.queue = [];
+    this.notifyVoice();
     this.note('todos os áudios interrompidos');
     this.sendStatus();
   }
@@ -157,6 +162,7 @@ export class AudioManager {
       lastError: status.lastError,
       masterVolume: status.masterVolume,
       userAgent: (this.options.userAgent ?? '').slice(0, 240),
+      ...(this.options.extraStatus?.() ?? {}),
     });
   }
 
@@ -233,10 +239,12 @@ export class AudioManager {
     this.lastStartByClip.set(command.clipId, entry.startedAt);
     this.note(`tocando: ${command.key}`);
     this.ack(command, 'played');
+    this.notifyVoice();
     void handle.ended.then(() => {
       const index = this.active.indexOf(entry);
       if (index >= 0) this.active.splice(index, 1);
       if (command.channel === 'voice') this.lastVoiceEndedAt = this.now();
+      this.notifyVoice();
       this.pump();
       this.options.onChange?.();
     });
@@ -247,6 +255,7 @@ export class AudioManager {
     entry.handle.stop(120);
     const index = this.active.indexOf(entry);
     if (index >= 0) this.active.splice(index, 1);
+    this.notifyVoice();
     this.note(`${entry.command.key}: ${reason}`);
   }
 
@@ -270,6 +279,14 @@ export class AudioManager {
     );
     this.loading.set(url, task);
     return task;
+  }
+
+  private voiceActive = false;
+  private notifyVoice(): void {
+    const active = this.active.some((item) => item.command.channel === 'voice');
+    if (active === this.voiceActive) return;
+    this.voiceActive = active;
+    this.options.onVoiceChange?.(active);
   }
 
   private remove(command: AudioPlayCommand): void {

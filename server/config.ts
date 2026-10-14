@@ -29,6 +29,8 @@ const schema = z.object({
   /** Diretório persistente para os áudios (ex.: volume do Railway). Sem ele, os bytes ficam no PostgreSQL. */
   AUDIO_STORAGE_DIR: z.string().optional(),
   AUDIO_MAX_BYTES: z.coerce.number().int().min(50_000).max(50_000_000).default(5 * 1024 * 1024),
+  /** Limite para faixas de música de fundo (mais longas). */
+  AUDIO_MUSIC_MAX_BYTES: z.coerce.number().int().min(50_000).max(80_000_000).default(20 * 1024 * 1024),
   AUDIO_MAX_CLIPS: z.coerce.number().int().min(1).max(1_000).default(200),
   /** Aplica uma única vez o mapeamento inicial de presentes (server/gift-seed.ts). */
   GIFT_SEED: bool(true),

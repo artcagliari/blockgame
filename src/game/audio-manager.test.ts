@@ -33,7 +33,8 @@ function command(id: string, over: Partial<AudioPlayCommand> = {}): AudioPlayCom
 function manifest(ids: string[], over: Partial<AudioManifest> = {}): AudioManifest {
   return {
     clips: ids.map((id) => ({ id, url: url(id), volume: 1, channel: 'sfx' as const, durationMs: 500, name: id })),
-    masterVolume: 0.8, builtinEffects: true, maxConcurrent: 3, minVoiceGapMs: 1_000, version: 1, ...over,
+    masterVolume: 0.8, builtinEffects: true, maxConcurrent: 3, minVoiceGapMs: 1_000, version: 1,
+    music: { enabled: false, clipIds: [], mode: 'shuffle', volume: 0.3, duck: 0.3, onlyDuringMatch: false, tracks: [] }, ...over,
   };
 }
 async function flush() {
@@ -171,6 +172,19 @@ describe('AudioManager (overlay)', () => {
     manager.stopAll();
     expect(backend.plays[0].stopped).toBe(true);
     expect(manager.status()).toMatchObject({ queued: 0, playing: [] });
+  });
+
+  it('avisa início e fim de bordão (para baixar a música de fundo)', async () => {
+    const changes: boolean[] = [];
+    const local = new AudioManager(backend, { clientId: 'c2', page: 'overlay', now: () => now, onVoiceChange: (active) => changes.push(active) });
+    local.setManifest(manifest(['v1', 'a']));
+    await flush();
+    local.enqueue(command('a'));
+    local.enqueue(command('v1', { channel: 'voice', priority: 70 }));
+    expect(changes).toEqual([true]);
+    finish(backend, backend.plays.findIndex((item) => item.url === url('v1')));
+    await flush();
+    expect(changes).toEqual([true, false]);
   });
 
   it('envia status para o diagnóstico', () => {

@@ -264,3 +264,55 @@ describe('diagnóstico', () => {
     expect(diagnostics.dispatches[0]).toMatchObject({ playId: command.playId, clipName: 'x', acks: { c1: { status: 'played' } } });
   });
 });
+
+describe('música de fundo', () => {
+  async function musicAudio() {
+    const store = new MemoryStore();
+    await store.init();
+    const audio = new AudioService(store, new DatabaseBlobStore(store), silentLogger, { maxBytes: 100_000, musicMaxBytes: 2 * MB, maxClips: 20 });
+    await audio.init();
+    return { audio };
+  }
+
+  it('aceita faixas longas só na categoria música', async () => {
+    const { audio } = await musicAudio();
+    const long = makeWav(150_000); // 2,5 min, ~2,4 MB? (8 kHz mono = 16 KB/s → 2,4 MB)
+    const small = makeWav(5_000);
+    await expect(audio.upload({ data: long, name: 'faixa', category: 'bordao', team: 'geral' })).rejects.toThrow(/limite|longo/);
+    const shortTrack = await audio.upload({ data: makeWav(100_000), name: 'Trilha', category: 'musica', team: 'geral' });
+    expect(shortTrack).toMatchObject({ category: 'musica', durationMs: 100_000 });
+    await expect(audio.upload({ data: small, name: 'ok', category: 'bordao', team: 'geral' })).resolves.toBeTruthy();
+  });
+
+  it('playlist só aceita faixas de música; música não vira bordão nem toca na mesa', async () => {
+    const { audio } = await musicAudio();
+    const track = await audio.upload({ data: makeWav(20_000), name: 'Trilha', category: 'musica', team: 'geral' });
+    const bordao = await audio.upload({ data: makeWav(500), name: 'B', category: 'bordao', team: 'lula' });
+    await expect(audio.updateConfig({ music: { clipIds: [bordao.id] } as never })).rejects.toThrow(/Música de fundo/);
+    await expect(audio.updateConfig({ bindings: { 'event:like': { clipIds: [track.id], mode: 'random', enabled: true, cooldownMs: 0 } } })).rejects.toThrow(/não pode/);
+    expect(() => audio.playManual(track.id)).toThrow(/Música de fundo/);
+    await expect(audio.updateClip(track.id, { category: 'bordao' })).rejects.toThrow(/longa demais/);
+  });
+
+  it('manifesto traz a playlist ativa e não pré-carrega a música junto dos efeitos', async () => {
+    const { audio } = await musicAudio();
+    const track = await audio.upload({ data: makeWav(20_000), name: 'Trilha', category: 'musica', team: 'geral' });
+    await audio.upload({ data: makeWav(500), name: 'B', category: 'bordao', team: 'lula' });
+    await audio.updateConfig({ music: { enabled: true, clipIds: [track.id], volume: 0.3, duck: 0.25, mode: 'shuffle', onlyDuringMatch: false } });
+    const manifest = audio.manifest();
+    expect(manifest.clips.map((clip) => clip.name)).toEqual(['B']);
+    expect(manifest.music).toMatchObject({ enabled: true, volume: 0.3, duck: 0.25, tracks: [{ id: track.id, name: 'Trilha' }] });
+    await audio.updateClip(track.id, { active: false });
+    expect(audio.manifest().music.tracks).toHaveLength(0);
+    await audio.deleteClip(track.id);
+    expect(audio.getConfig().music.clipIds).toEqual([]);
+  });
+
+  it('próxima faixa é enviada aos overlays', async () => {
+    const { audio } = await musicAudio();
+    const commands: unknown[] = [];
+    audio.on('music', (command) => commands.push(command));
+    audio.nextTrack();
+    expect(commands).toEqual([{ action: 'next' }]);
+  });
+});

@@ -78,7 +78,7 @@ export function createApp(deps: AppDeps): App {
     store,
     config.AUDIO_STORAGE_DIR ? new FilesystemBlobStore(path.resolve(config.AUDIO_STORAGE_DIR)) : new DatabaseBlobStore(store),
     logger.child({ c: 'audio' }),
-    { maxBytes: config.AUDIO_MAX_BYTES, maxClips: config.AUDIO_MAX_CLIPS },
+    { maxBytes: config.AUDIO_MAX_BYTES, musicMaxBytes: config.AUDIO_MUSIC_MAX_BYTES, maxClips: config.AUDIO_MAX_CLIPS },
   );
 
   let role: 'leader' | 'standby' | 'starting' | 'stopped' = 'starting';
@@ -320,7 +320,7 @@ export function createApp(deps: AppDeps): App {
 
 
   // ---- Sons e bordões (somente administradores) ----
-  const rawAudio = express.raw({ type: () => true, limit: config.AUDIO_MAX_BYTES });
+  const rawAudio = express.raw({ type: () => true, limit: Math.max(config.AUDIO_MAX_BYTES, config.AUDIO_MUSIC_MAX_BYTES) });
   const uploadQuery = z.object({
     name: z.string().min(1).max(60),
     category: z.enum(AUDIO_CATEGORIES as [string, ...string[]]),
@@ -338,7 +338,7 @@ export function createApp(deps: AppDeps): App {
       config: audio.getConfig(),
       diagnostics: audio.diagnostics(),
       storage: audio.storageKind,
-      limits: { maxBytes: config.AUDIO_MAX_BYTES, maxClips: config.AUDIO_MAX_CLIPS, formats: ['mp3', 'wav', 'ogg'] },
+      limits: { maxBytes: config.AUDIO_MAX_BYTES, musicMaxBytes: config.AUDIO_MUSIC_MAX_BYTES, maxClips: config.AUDIO_MAX_CLIPS, formats: ['mp3', 'wav', 'ogg'] },
       eventKeys: AUDIO_EVENT_KEYS,
       slots: GIFT_SLOTS.map((slot) => ({ key: `gift:${slot.team}:${slot.visualId}`, team: slot.team, label: slot.label, visualId: slot.visualId, blocks: slot.defaultBlocks })),
       defaultCooldowns: Object.fromEntries(ALL_BINDING_KEYS.map((key) => [key, defaultCooldown(key)])),
@@ -370,6 +370,14 @@ export function createApp(deps: AppDeps): App {
     maxConcurrent: z.number().int().min(1).max(6),
     minVoiceGapMs: z.number().int().min(0).max(60_000),
     bindings: z.record(z.string(), bindingSchema).refine((value) => Object.keys(value).every((key) => (ALL_BINDING_KEYS as string[]).includes(key)), 'gatilho desconhecido'),
+    music: z.object({
+      enabled: z.boolean(),
+      clipIds: z.array(z.string().uuid()).max(50),
+      mode: z.enum(['sequential', 'shuffle']),
+      volume: z.number().min(0).max(1),
+      duck: z.number().min(0).max(1),
+      onlyDuringMatch: z.boolean(),
+    }).partial().strict(),
     randomBordoes: z.object({
       enabled: z.boolean(),
       intervalSeconds: z.number().int().min(10).max(3_600),
@@ -401,6 +409,7 @@ export function createApp(deps: AppDeps): App {
     const command = audio.trigger(key as AudioBindingKey, { force: true });
     res.json({ command, message: command ? undefined : 'Gatilho sem áudio ativo vinculado.' });
   }));
+  admin.post('/audio/music/next', needLeader, (_req, res) => { audio.nextTrack(); res.json({ ok: true }); });
   admin.post('/audio/random', needLeader, (_req, res) => {
     const command = audio.playRandom();
     res.json({ command, message: command ? undefined : 'Nenhum bordão aleatório disponível agora (lista vazia ou intervalo mínimo entre bordões).' });
@@ -473,7 +482,7 @@ export function createApp(deps: AppDeps): App {
     if (error instanceof z.ZodError) { res.status(400).json({ error: 'invalid_body', issues: error.issues }); return; }
     const type = (error as { type?: string })?.type;
     if (type === 'entity.too.large') {
-      res.status(413).json({ error: 'too_large', message: `Arquivo maior que o limite de ${Math.round(config.AUDIO_MAX_BYTES / 1024 / 1024)} MB.` });
+      res.status(413).json({ error: 'too_large', message: `Arquivo maior que o limite de ${Math.round(Math.max(config.AUDIO_MAX_BYTES, config.AUDIO_MUSIC_MAX_BYTES) / 1024 / 1024)} MB.` });
       return;
     }
     if (type === 'entity.parse.failed') { res.status(400).json({ error: 'invalid_body' }); return; }
@@ -512,6 +521,11 @@ export function createApp(deps: AppDeps): App {
       lastError: z.string().max(240).nullable(),
       masterVolume: z.number().min(0).max(1),
       userAgent: z.string().max(240),
+      music: z.object({
+        state: z.enum(['off', 'playing', 'paused', 'waiting', 'blocked', 'error']),
+        track: z.string().max(80).nullable(),
+        volume: z.number().min(0).max(1),
+      }).strict().optional(),
     }).strict(),
     z.object({
       type: z.literal('ack'),
@@ -552,6 +566,7 @@ export function createApp(deps: AppDeps): App {
   game.on('roundEnded', (state) => io.emit('roundEnded', state));
   audio.on('play', (command) => io.emit('audio:play', command));
   audio.on('stop', () => io.emit('audio:stop'));
+  audio.on('music', (command: { action: 'next' }) => io.emit('audio:music', command));
   audio.on('manifest', () => io.emit('audio:manifest', audio.manifest()));
 
   // Canal administrativo (namespace autenticado): status e feed de eventos em tempo real.

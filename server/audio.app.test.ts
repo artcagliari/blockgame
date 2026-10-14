@@ -14,7 +14,7 @@ const sockets: Socket[] = [];
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function boot(store = new MemoryStore(), env: Record<string, string> = {}) {
-  const config = loadConfig({ NODE_ENV: 'test', PORT: '0', HOST: '127.0.0.1', ADMIN_TOKEN: TOKEN, AUTOPLAY: 'off', TIKTOK_AUTOCONNECT: 'false', AUDIO_MAX_BYTES: '200000', ...env } as NodeJS.ProcessEnv);
+  const config = loadConfig({ NODE_ENV: 'test', PORT: '0', HOST: '127.0.0.1', ADMIN_TOKEN: TOKEN, AUTOPLAY: 'off', TIKTOK_AUTOCONNECT: 'false', AUDIO_MAX_BYTES: '200000', AUDIO_MUSIC_MAX_BYTES: '600000', ...env } as NodeJS.ProcessEnv);
   const app = createApp({ config, store, logger: silentLogger, connectionFactory: () => new FakeConnection() });
   const port = await app.start();
   running.push(app);
@@ -63,8 +63,14 @@ describe('áudio pela API e pelo Socket.IO', () => {
   it('upload valida formato e tamanho; nome/equipe/categoria inválidos são recusados', async () => {
     const { base } = await boot();
     expect((await uploadRaw(base, Buffer.from('GIF89a falso áudio'))).status).toBe(400);
-    const tooLarge = await uploadRaw(base, makeWav(20_000));
-    expect(tooLarge.status).toBe(413);
+    // acima do limite de bordão, abaixo do de música: recusado pela validação
+    const bordaoGrande = await uploadRaw(base, makeWav(20_000));
+    expect(bordaoGrande.status).toBe(400);
+    expect((await bordaoGrande.json()).message).toMatch(/limite/);
+    // a mesma faixa é aceita como música de fundo
+    expect((await uploadRaw(base, makeWav(20_000), 'name=Trilha&category=musica&team=geral')).status).toBe(201);
+    // acima até do limite de música: cortado já na leitura do corpo
+    expect((await uploadRaw(base, makeWav(40_000))).status).toBe(413);
     expect((await uploadRaw(base, makeWav(100), 'name=x&category=hack&team=lula')).status).toBe(400);
     expect((await uploadRaw(base, makeWav(100), 'name=x&category=bordao&team=todos')).status).toBe(400);
     const ok = await uploadRaw(base, makeMp3(20), 'name=Efeito&category=efeito&team=geral&volume=0.5');

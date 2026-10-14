@@ -81,6 +81,8 @@ export interface ServerToClientEvents {
   'audio:play': (command: AudioPlayCommand) => void;
   /** Interrompe tudo o que estiver tocando e esvazia a fila. */
   'audio:stop': () => void;
+  /** Comando da música de fundo (pular faixa). Ligar/desligar vai pelo manifesto. */
+  'audio:music': (command: { action: 'next' }) => void;
 }
 
 export interface ClientToServerEvents {
@@ -94,8 +96,22 @@ export interface ClientToServerEvents {
 
 export type AudioTeam = Team | 'geral';
 /** bordao/comemoracao tocam um de cada vez (canal de voz); efeito/vinheta podem sobrepor. */
-export type AudioCategory = 'bordao' | 'comemoracao' | 'efeito' | 'vinheta';
-export type AudioChannel = 'voice' | 'sfx';
+export type AudioCategory = 'bordao' | 'comemoracao' | 'efeito' | 'vinheta' | 'musica';
+/** music = música de fundo contínua (streaming, não é pré-decodificada). */
+export type AudioChannel = 'voice' | 'sfx' | 'music';
+
+export interface MusicSettings {
+  /** Liga/desliga a música em todos os overlays. */
+  enabled: boolean;
+  clipIds: string[];
+  mode: 'sequential' | 'shuffle';
+  /** 0..1, multiplicado pelo volume geral. */
+  volume: number;
+  /** Fração do volume da música enquanto toca um bordão/comemoração (0..1). */
+  duck: number;
+  /** Só toca com a rodada em andamento (senão, toca também aguardando a LIVE). */
+  onlyDuringMatch: boolean;
+}
 
 export const AUDIO_EVENT_KEYS = [
   'event:like',
@@ -155,6 +171,7 @@ export interface AudioConfig {
     jitterPercent: number;
     clipIds: string[];
   };
+  music: MusicSettings;
 }
 
 export interface AudioManifest {
@@ -163,6 +180,7 @@ export interface AudioManifest {
   builtinEffects: boolean;
   maxConcurrent: number;
   minVoiceGapMs: number;
+  music: MusicSettings & { tracks: Array<{ id: string; url: string; name: string }> };
   version: number;
 }
 
@@ -179,6 +197,7 @@ export interface AudioPlayCommand {
   at: number;
 }
 
+export type MusicState = 'off' | 'playing' | 'paused' | 'waiting' | 'blocked' | 'error';
 export type AudioEngineState = 'unsupported' | 'locked' | 'running' | 'suspended' | 'error';
 
 export type AudioReport =
@@ -195,6 +214,7 @@ export type AudioReport =
       lastError: string | null;
       masterVolume: number;
       userAgent: string;
+      music?: { state: MusicState; track: string | null; volume: number };
     }
   | { type: 'ack'; clientId: string; playId: string; status: 'played' | 'failed' | 'dropped' | 'blocked'; error?: string };
 

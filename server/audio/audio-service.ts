@@ -13,6 +13,7 @@ import {
   type AudioReport,
   type AudioTeam,
   type GameState,
+  type MusicSettings,
   type IncrementEvent,
 } from '../../src/game/types.js';
 import type { GameService } from '../game-service.js';
@@ -23,7 +24,7 @@ import type { AudioBlobStore } from './blob-store.js';
 import { probeAudio } from './probe.js';
 
 export const AUDIO_CONFIG_KEY = 'audio.config';
-export const AUDIO_CATEGORIES: AudioCategory[] = ['bordao', 'comemoracao', 'efeito', 'vinheta'];
+export const AUDIO_CATEGORIES: AudioCategory[] = ['bordao', 'comemoracao', 'efeito', 'vinheta', 'musica'];
 export const AUDIO_TEAMS: AudioTeam[] = ['lula', 'bolsonaro', 'geral'];
 export const GIFT_BINDING_KEYS = GIFT_SLOTS.map((slot) => `gift:${slot.team}:${slot.visualId}` as AudioBindingKey);
 export const ALL_BINDING_KEYS: AudioBindingKey[] = [...AUDIO_EVENT_KEYS, ...GIFT_BINDING_KEYS];
@@ -60,7 +61,12 @@ export function priorityFor(key: AudioPlayCommand['key']): number {
 }
 
 export function channelFor(category: AudioCategory): AudioChannel {
+  if (category === 'musica') return 'music';
   return category === 'bordao' || category === 'comemoracao' ? 'voice' : 'sfx';
+}
+
+export function defaultMusic(): MusicSettings {
+  return { enabled: false, clipIds: [], mode: 'shuffle', volume: 0.35, duck: 0.35, onlyDuringMatch: false };
 }
 
 export function defaultAudioConfig(): AudioConfig {
@@ -71,6 +77,7 @@ export function defaultAudioConfig(): AudioConfig {
     minVoiceGapMs: 1_500,
     bindings: {},
     randomBordoes: { enabled: false, intervalSeconds: 45, jitterPercent: 30, clipIds: [] },
+    music: defaultMusic(),
   };
 }
 
@@ -103,6 +110,9 @@ export interface AudioServiceOptions {
   maxBytes: number;
   maxClips: number;
   maxDurationMs?: number;
+  /** Limites próprios da música de fundo (faixas longas). */
+  musicMaxBytes?: number;
+  musicMaxDurationMs?: number;
   clock?: () => number;
   random?: () => number;
 }
@@ -158,7 +168,7 @@ export class AudioService extends EventEmitter {
 
   async upload(input: UploadInput): Promise<AudioClipInfo> {
     if (this.clips.size >= this.options.maxClips) throw new AudioValidationError(`Limite de ${this.options.maxClips} áudios atingido.`);
-    const meta = this.validateFile(input.data, input.clientDurationMs);
+    const meta = this.validateFile(input.data, input.clientDurationMs, input.category);
     const now = this.clock();
     const clip: AudioClipInfo = {
       id: randomUUID(),
@@ -189,7 +199,7 @@ export class AudioService extends EventEmitter {
 
   async replaceFile(id: string, data: Buffer, clientDurationMs?: number | null): Promise<AudioClipInfo> {
     const current = this.requireClip(id);
-    const meta = this.validateFile(data, clientDurationMs);
+    const meta = this.validateFile(data, clientDurationMs, current.category);
     await this.blobs.put(id, data);
     const next: AudioClipInfo = { ...current, mime: meta.mime, sizeBytes: data.length, durationMs: meta.durationMs, sha256: meta.sha256, updatedAt: this.clock() };
     await this.store.saveAudioClip(next);
@@ -200,6 +210,12 @@ export class AudioService extends EventEmitter {
 
   async updateClip(id: string, patch: Partial<Pick<AudioClipInfo, 'name' | 'category' | 'team' | 'volume' | 'active'>>): Promise<AudioClipInfo> {
     const current = this.requireClip(id);
+    if (patch.category && patch.category !== current.category && current.category === 'musica') {
+      const limit = this.options.maxDurationMs ?? 120_000;
+      if ((current.durationMs ?? 0) > limit || current.sizeBytes > this.options.maxBytes) {
+        throw new AudioValidationError('Esta faixa é longa demais para ser bordão ou efeito.');
+      }
+    }
     const next: AudioClipInfo = {
       ...current,
       name: patch.name !== undefined ? cleanName(patch.name) : current.name,
@@ -225,7 +241,12 @@ export class AudioService extends EventEmitter {
     for (const [key, binding] of Object.entries(this.config.bindings) as Array<[AudioBindingKey, AudioBinding]>) {
       bindings[key] = { ...binding, clipIds: binding.clipIds.filter((clipId) => clipId !== id) };
     }
-    this.config = { ...this.config, bindings, randomBordoes: { ...this.config.randomBordoes, clipIds: this.config.randomBordoes.clipIds.filter((clipId) => clipId !== id) } };
+    this.config = {
+      ...this.config,
+      bindings,
+      randomBordoes: { ...this.config.randomBordoes, clipIds: this.config.randomBordoes.clipIds.filter((clipId) => clipId !== id) },
+      music: { ...this.config.music, clipIds: this.config.music.clipIds.filter((clipId) => clipId !== id) },
+    };
     await this.store.setSetting(AUDIO_CONFIG_KEY, this.config);
     this.publishManifest();
   }
@@ -250,10 +271,17 @@ export class AudioService extends EventEmitter {
       ...patch,
       bindings: { ...this.config.bindings, ...(patch.bindings ?? {}) },
       randomBordoes: { ...this.config.randomBordoes, ...(patch.randomBordoes ?? {}) },
+      music: { ...this.config.music, ...(patch.music ?? {}) },
     };
+    for (const clipId of merged.music.clipIds) {
+      const clip = this.clips.get(clipId);
+      if (!clip) throw new AudioValidationError(`Faixa inexistente na música de fundo: ${clipId}`);
+      if (clip.category !== 'musica') throw new AudioValidationError(`“${clip.name}” não é da categoria Música de fundo.`);
+    }
     for (const binding of Object.values(merged.bindings)) {
       for (const clipId of binding?.clipIds ?? []) {
         if (!this.clips.has(clipId)) throw new AudioValidationError(`Áudio inexistente no vínculo: ${clipId}`);
+        if (this.clips.get(clipId)?.category === 'musica') throw new AudioValidationError('Música de fundo não pode ser usada como bordão ou efeito.');
       }
     }
     for (const clipId of merged.randomBordoes.clipIds) {
@@ -269,12 +297,19 @@ export class AudioService extends EventEmitter {
   manifest(baseUrl = ''): AudioManifest {
     return {
       clips: this.listClips()
-        .filter((clip) => clip.active)
+        .filter((clip) => clip.active && clip.category !== 'musica')
         .map((clip) => ({ id: clip.id, url: this.clipUrl(clip, baseUrl), volume: clip.volume, channel: channelFor(clip.category), durationMs: clip.durationMs, name: clip.name })),
       masterVolume: this.config.masterVolume,
       builtinEffects: this.config.builtinEffects,
       maxConcurrent: this.config.maxConcurrent,
       minVoiceGapMs: this.config.minVoiceGapMs,
+      music: {
+        ...this.config.music,
+        tracks: this.config.music.clipIds
+          .map((id) => this.clips.get(id))
+          .filter((clip): clip is AudioClipInfo => Boolean(clip?.active))
+          .map((clip) => ({ id: clip.id, url: this.clipUrl(clip, baseUrl), name: clip.name })),
+      },
       version: this.manifestVersion,
     };
   }
@@ -285,7 +320,7 @@ export class AudioService extends EventEmitter {
   trigger(key: AudioBindingKey, options: { force?: boolean } = {}): AudioPlayCommand | null {
     const binding = this.config.bindings[key];
     if (!binding || !binding.enabled) return null;
-    const candidates = binding.clipIds.filter((id) => this.clips.get(id)?.active);
+    const candidates = binding.clipIds.filter((id) => this.clips.get(id)?.active && this.clips.get(id)?.category !== 'musica');
     if (candidates.length === 0) return null;
     const now = this.clock();
     if (!options.force && now - (this.lastPlayed.get(key) ?? 0) < binding.cooldownMs) return null;
@@ -297,6 +332,7 @@ export class AudioService extends EventEmitter {
   playManual(clipId: string): AudioPlayCommand {
     const clip = this.requireClip(clipId);
     if (!clip.active) throw new AudioValidationError('Áudio desativado. Ative-o antes de reproduzir na LIVE.');
+    if (clip.category === 'musica') throw new AudioValidationError('Música de fundo é controlada pela seção Música de fundo.');
     return this.dispatch(clipId, 'manual');
   }
 
@@ -305,10 +341,15 @@ export class AudioService extends EventEmitter {
     this.logger.info('áudio interrompido pelo administrador');
   }
 
+  /** Pula para a próxima faixa em todos os overlays. */
+  nextTrack(): void {
+    this.emit('music', { action: 'next' });
+  }
+
   /** Um bordão aleatório (usado pelo temporizador). */
   playRandom(): AudioPlayCommand | null {
     const { randomBordoes, minVoiceGapMs } = this.config;
-    const candidates = randomBordoes.clipIds.filter((id) => this.clips.get(id)?.active);
+    const candidates = randomBordoes.clipIds.filter((id) => this.clips.get(id)?.active && this.clips.get(id)?.category !== 'musica');
     if (candidates.length === 0) return null;
     if (this.clock() - this.lastVoiceAt < Math.max(minVoiceGapMs, 3_000)) return null;
     return this.dispatch(this.pick('random', candidates, 'random'), 'random');
@@ -478,16 +519,18 @@ export class AudioService extends EventEmitter {
     return clip;
   }
 
-  private validateFile(data: Buffer, clientDurationMs?: number | null) {
+  private validateFile(data: Buffer, clientDurationMs: number | null | undefined, category: AudioCategory) {
+    const music = category === 'musica';
+    const maxBytes = music ? this.options.musicMaxBytes ?? this.options.maxBytes : this.options.maxBytes;
     if (!data || data.length === 0) throw new AudioValidationError('Arquivo vazio.');
-    if (data.length > this.options.maxBytes) {
-      throw new AudioValidationError(`Arquivo maior que o limite de ${Math.round(this.options.maxBytes / 1024 / 1024)} MB.`);
+    if (data.length > maxBytes) {
+      throw new AudioValidationError(`Arquivo maior que o limite de ${Math.round(maxBytes / 1024 / 1024)} MB${music ? ' para música' : ''}.`);
     }
     const probe = probeAudio(data);
     if (!probe) throw new AudioValidationError('Formato não suportado. Envie MP3, WAV ou OGG.');
     const fallback = typeof clientDurationMs === 'number' && Number.isFinite(clientDurationMs) && clientDurationMs > 0 ? Math.round(clientDurationMs) : null;
     const durationMs = probe.durationMs ?? fallback;
-    const maxDuration = this.options.maxDurationMs ?? 120_000;
+    const maxDuration = music ? this.options.musicMaxDurationMs ?? 900_000 : this.options.maxDurationMs ?? 120_000;
     if (durationMs !== null && durationMs > maxDuration) {
       throw new AudioValidationError(`Áudio longo demais (máximo ${Math.round(maxDuration / 1000)} s).`);
     }
@@ -508,6 +551,7 @@ export class AudioService extends EventEmitter {
       };
     }
     const random = input.randomBordoes ?? base.randomBordoes;
+    const music = { ...base.music, ...(input.music ?? {}) };
     return {
       masterVolume: clampVolume(input.masterVolume ?? base.masterVolume),
       builtinEffects: input.builtinEffects ?? base.builtinEffects,
@@ -519,6 +563,14 @@ export class AudioService extends EventEmitter {
         intervalSeconds: clampInt(random.intervalSeconds, 10, 3_600, base.randomBordoes.intervalSeconds),
         jitterPercent: clampInt(random.jitterPercent, 0, 90, base.randomBordoes.jitterPercent),
         clipIds: [...new Set((random.clipIds ?? []).filter((id) => this.clips.has(id)))].slice(0, 50),
+      },
+      music: {
+        enabled: Boolean(music.enabled),
+        clipIds: [...new Set((music.clipIds ?? []).filter((id) => this.clips.get(id)?.category === 'musica'))].slice(0, 50),
+        mode: music.mode === 'sequential' ? 'sequential' : 'shuffle',
+        volume: clampVolume(music.volume),
+        duck: clampVolume(music.duck),
+        onlyDuringMatch: Boolean(music.onlyDuringMatch),
       },
     };
   }

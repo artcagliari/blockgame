@@ -449,3 +449,12 @@ button { color: inherit; }
 @media (max-width: 900px) {
   .audio-board__controls, .audio-upload, .audio-library__filters, .audio-clip { grid-template-columns: 1fr; }
 }
+
+.audio-music { margin-top: 6px; padding-top: 6px; border-top: 1px solid #1a3347; }
+.audio-music__row { display: grid; grid-template-columns: auto auto 1fr 1fr auto auto; gap: 14px; align-items: end; }
+.audio-music__row .button { width: auto; white-space: nowrap; }
+.audio-music__row label { display: grid; gap: 6px; color: #aebdca; font-size: 12px; font-weight: 600; }
+.audio-music__row label span { color: #ffcf4c; }
+.audio-music__row input[type='range'] { width: 100%; accent-color: #29d974; }
+.audio-music__row select { padding: 9px 10px; color: #eaf2f8; border: 1px solid #29445a; border-radius: 8px; background: #071827; font-size: 12px; }
+@media (max-width: 900px) { .audio-music__row { grid-template-columns: 1fr; } }
